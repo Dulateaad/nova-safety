@@ -9,55 +9,13 @@ import {
 import { openWorkPermissionPdf } from '../lib/openWorkPermissionPdf'
 import { patchWorkPermissionDocument, syncWorkPermissionsLive } from '../lib/syncWorkPermissionsLive'
 import type {
-  WorkPermissionCheckboxGroup,
   WorkPermissionKind,
   WorkPermissionsBundle,
 } from '../types/workPermissions'
 import { useLanguage } from '../context/LanguageContext'
 import { LoadingProgress } from './LoadingProgress'
+import { PreWorkChecksTable } from './PreWorkChecksTable'
 import { WorkPermissionIcon } from './WorkPermissionIcon'
-
-function PreWorkChecksEditor(props: {
-  group: WorkPermissionCheckboxGroup
-  clarificationPlaceholder: string
-  onChange: (group: WorkPermissionCheckboxGroup) => void
-  disabled?: boolean
-}) {
-  const { group, onChange, clarificationPlaceholder, disabled = false } = props
-  return (
-    <fieldset className="work-perm-checks" disabled={disabled}>
-      <legend className="work-perm-checks__legend">{group.label}</legend>
-      <ul className="work-perm-checks__list">
-        {group.items.map((item, idx) => (
-          <li key={item.id} className="work-perm-checks__item">
-            <label className="check work-perm-checks__check">
-              <input
-                type="checkbox"
-                checked={item.checked}
-                onChange={(e) => {
-                  const items = [...group.items]
-                  items[idx] = { ...item, checked: e.target.checked }
-                  onChange({ ...group, items })
-                }}
-              />
-              <span>{item.label}</span>
-            </label>
-            <input
-              className="work-perm-checks__note"
-              placeholder={clarificationPlaceholder}
-              value={item.note}
-              onChange={(e) => {
-                const items = [...group.items]
-                items[idx] = { ...item, note: e.target.value }
-                onChange({ ...group, items })
-              }}
-            />
-          </li>
-        ))}
-      </ul>
-    </fieldset>
-  )
-}
 
 export function PermitterPreWorkLivePanel(props: {
   permit: Permit
@@ -204,7 +162,7 @@ export function PermitterPreWorkLivePanel(props: {
 
       {canEdit ? (
         <ol className="work-perm-ert-panel__steps small">
-          <li>Отметьте пункты, которые имеются на месте (колонка «Имеется» в PDF).</li>
+          <li>Отметьте пункты в колонке «Имеется» (как в PDF разрешения).</li>
           <li>{pwc.stepSave}</li>
           <li>{pwc.stepPdf}</li>
         </ol>
@@ -237,9 +195,10 @@ export function PermitterPreWorkLivePanel(props: {
                 </button>
               ) : null}
             </div>
-            <PreWorkChecksEditor
+            <PreWorkChecksTable
+              kind={doc.kind}
               group={doc.form.preWorkChecks}
-              clarificationPlaceholder={wp.clarification}
+              editColumn={canEdit ? 'available' : 'none'}
               disabled={!canEdit}
               onChange={(group) =>
                 patchLocal(doc.kind, { form: { ...doc.form, preWorkChecks: group } })

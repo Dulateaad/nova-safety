@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { WORK_PERMISSION_BY_KIND } from '../config/workPermissionsConfig'
 import { GasTestModesFields } from './GasTestModesFields'
+import { PreWorkChecksTable } from './PreWorkChecksTable'
 import type {
   WorkPermissionCheckboxGroup,
   WorkPermissionDocument,
@@ -71,15 +72,20 @@ function FormSection(props: {
 export function WorkPermissionFormEditor(props: {
   doc: WorkPermissionDocument
   onChange: (form: WorkPermissionForm) => void
-  /** Скрыть раздел 3 — заполняется производителем на карточке наряда. */
+  /** Шаг «Разрешения»: без п.2, без блока «Дополнительно», п.3 — таблица «Требуется». */
+  variant?: 'default' | 'permissions-wizard'
+  /** @deprecated используйте variant="permissions-wizard" */
   hidePreWorkSection?: boolean
 }) {
-  const { doc, onChange, hidePreWorkSection = false } = props
+  const { doc, onChange, variant = 'default', hidePreWorkSection = false } = props
+  const wizard = variant === 'permissions-wizard'
   const f = doc.form
   const style = WORK_PERMISSION_BY_KIND[doc.kind].style
   const isCs = doc.kind === 'confined_space'
   const isFire = doc.kind === 'open_flame_fire'
   const showGasModes = WORK_PERMISSION_BY_KIND[doc.kind].requiresGasTests
+  const showPreWorkTable = wizard && !isCs
+  const hidePreWork = hidePreWorkSection && !wizard
 
   function patch(partial: Partial<WorkPermissionForm>) {
     onChange({ ...f, ...partial })
@@ -166,7 +172,7 @@ export function WorkPermissionFormEditor(props: {
         ) : null}
       </FormSection>
 
-      {showGasModes ? (
+      {showGasModes && !wizard ? (
         <FormSection
           num="2"
           title="Результаты отбора проб воздушной среды"
@@ -199,8 +205,24 @@ export function WorkPermissionFormEditor(props: {
             </label>
           </FormSection>
         </>
-      ) : (
-        !hidePreWorkSection ? (
+      ) : showPreWorkTable ? (
+        <FormSection
+          num="3"
+          title={
+            isFire
+              ? 'Проверки, выполняемые на рабочей площадке'
+              : 'Проверки, выполняемые на рабочем месте'
+          }
+          hint="Отметьте пункты в колонке «Требуется»"
+        >
+          <PreWorkChecksTable
+            kind={doc.kind}
+            group={f.preWorkChecks}
+            editColumn="required"
+            onChange={(g) => patch({ preWorkChecks: g })}
+          />
+        </FormSection>
+      ) : !hidePreWork ? (
         <FormSection
           num="3"
           title={isFire ? 'Проверки на рабочей площадке' : 'Проверки на рабочем месте'}
@@ -211,9 +233,9 @@ export function WorkPermissionFormEditor(props: {
             onChange={(g) => patch({ preWorkChecks: g })}
           />
         </FormSection>
-        ) : null
-      )}
+      ) : null}
 
+      {!wizard ? (
       <FormSection num="+" title="Дополнительно" hint="Текст попадёт в PDF разрешения">
         <label className="work-perm-field work-perm-field--wide">
           <span className="work-perm-field__label">Сводный текст / доп. меры защиты</span>
@@ -233,11 +255,14 @@ export function WorkPermissionFormEditor(props: {
           />
         </label>
       </FormSection>
+      ) : null}
 
+      {!wizard ? (
       <p className="work-perm-form__gas-hint muted xsmall">
         Раздел «Результаты отбора проб» заполняет ПАС (ERT) после выдачи наряда — данные
         автоматически попадают в PDF.
       </p>
+      ) : null}
     </div>
   )
 }

@@ -41,7 +41,10 @@ export interface GasTestReading {
 export interface WorkPermissionCheckboxItem {
   id: string
   label: string
+  /** Колонка «Имеется» в PDF (отмечает допускающий на карточке наряда). */
   checked: boolean
+  /** Колонка «Требуется» в PDF (отмечает производитель на шаге «Разрешения»). */
+  required?: boolean
   note: string
 }
 

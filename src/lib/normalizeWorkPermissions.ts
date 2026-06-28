@@ -17,7 +17,14 @@ function mergeCheckboxGroup(
     label: incoming.label || base.label,
     items: base.items.map((item) => {
       const hit = byId.get(item.id)
-      return hit ? { ...item, checked: hit.checked, note: hit.note ?? '' } : item
+      return hit
+        ? {
+            ...item,
+            checked: hit.checked,
+            required: hit.required ?? item.required ?? false,
+            note: hit.note ?? '',
+          }
+        : item
     }),
   }
 }

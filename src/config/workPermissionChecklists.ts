@@ -12,7 +12,7 @@ import {
 function group(label: string, items: { id: string; label: string }[]): WorkPermissionCheckboxGroup {
   return {
     label,
-    items: items.map((i) => ({ ...i, checked: false, note: '' })),
+    items: items.map((i) => ({ ...i, checked: false, required: false, note: '' })),
   }
 }
 

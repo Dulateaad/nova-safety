@@ -1,7 +1,7 @@
 import type { WorkPermissionCheckboxGroup, WorkPermissionForm } from '../types/workPermissions'
 
 type AiCheckboxPayload = {
-  items?: { id: string; checked?: boolean; note?: string }[]
+  items?: { id: string; checked?: boolean; required?: boolean; note?: string }[]
 }
 
 export type WorkPermissionAiPayload = {
@@ -33,6 +33,7 @@ function applyCheckboxPayload(
       return {
         ...item,
         checked: Boolean(hit.checked),
+        required: typeof hit.required === 'boolean' ? hit.required : item.required,
         note: typeof hit.note === 'string' ? hit.note : item.note,
       }
     }),

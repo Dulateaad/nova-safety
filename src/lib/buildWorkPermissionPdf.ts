@@ -154,6 +154,11 @@ function checkMark(items: WorkPermissionCheckboxItem[], id: string): string {
   return hit?.checked ? '[X]' : '[ ]'
 }
 
+function requiredMark(items: WorkPermissionCheckboxItem[], id: string): string {
+  const hit = itemById(items, id)
+  return hit?.required ? '[X]' : '[ ]'
+}
+
 function checkboxLines(group: WorkPermissionCheckboxGroup | undefined): PdfBlock[] {
   if (!group?.items?.length) return []
   return group.items.map((item) => {
@@ -341,10 +346,10 @@ function dualChecksTable(
     ],
     ...pairs.map((p) => [
       cell(p.left, palette),
-      cell(' ', palette, { align: 'center' }),
+      cell(requiredMark(items, p.leftId), palette, { align: 'center' }),
       cell(checkMark(items, p.leftId), palette, { align: 'center' }),
       cell(p.right, palette),
-      cell(' ', palette, { align: 'center' }),
+      cell(requiredMark(items, p.rightId), palette, { align: 'center' }),
       cell(checkMark(items, p.rightId), palette, { align: 'center' }),
     ]),
     [cell('Дополнительные меры защиты', palette, { colSpan: 6 }), cell(' ', palette), cell(' ', palette), cell(' ', palette), cell(' ', palette), cell(' ', palette)],

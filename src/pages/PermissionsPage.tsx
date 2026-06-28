@@ -1,16 +1,9 @@
-import {
-  generateAllWorkPermissionsFromPpr,
-  generateWorkPermissionSectionsFromPpr,
-  isWorkPermissionAiAvailable,
-} from '../lib/generateWorkPermissionFromPpr'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { DocumentKitSummary } from '../components/DocumentKitSummary'
 import { LoadingProgress } from '../components/LoadingProgress'
-import { AiDisclaimerNotice } from '../components/AiDisclaimerNotice'
 import { WorkPermissionIcon } from '../components/WorkPermissionIcon'
 import { WorkPermissionFormEditor } from '../components/WorkPermissionFormEditor'
-import { APP_NAME } from '../config/branding'
 import { useLanguage } from '../context/LanguageContext'
 import { fillTemplate, workPermissionKindLabel } from '../i18n/getLocale'
 import { WORK_PERMISSION_BY_KIND } from '../config/workPermissionsConfig'
@@ -47,6 +40,7 @@ import {
 } from '../lib/workPermissionsAutosave'
 import { validateNdprDraft } from '../lib/validateNdprDraft'
 import { scrollAppToTopWithRetries } from '../lib/scrollAppToTop'
+import '../ndpr-page.css'
 import { validateAsorForm } from '../lib/validateAsorForm'
 import { ASOR_EDITOR_AUTOSAVE_KEY, type AsorForm } from '../types/asor'
 import type {
@@ -86,7 +80,6 @@ export function PermissionsPage() {
   const { showError } = useToast()
   const [busy, setBusy] = useState(false)
   const [stage, setStage] = useState<string | null>(null)
-  const [aiBusy, setAiBusy] = useState(false)
   const [bundle, setBundle] = useState<WorkPermissionsBundle | null>(null)
 
   const draft = useMemo(
@@ -141,30 +134,6 @@ export function PermissionsPage() {
     },
     [],
   )
-
-  async function fillViaAi(kind?: WorkPermissionDocument['kind']) {
-    if (!bundle || !ppr) return
-    setAiBusy(true)
-    setStage(fillTemplate(pb.aiFillingSections, { app: APP_NAME }))
-    try {
-      let documents = bundle.documents
-      if (kind) {
-        documents = await Promise.all(
-          documents.map(async (d) =>
-            d.kind === kind ? await generateWorkPermissionSectionsFromPpr(d, ppr) : d,
-          ),
-        )
-      } else {
-        documents = await generateAllWorkPermissionsFromPpr(documents, ppr)
-      }
-      setBundle({ documents, updatedAtIso: new Date().toISOString() })
-    } catch (e) {
-      showError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setAiBusy(false)
-      setStage(null)
-    }
-  }
 
   async function generateSinglePermission(kind: WorkPermissionDocument['kind']) {
     if (!bundle) return
@@ -322,28 +291,6 @@ export function PermissionsPage() {
         </div>
       </div>
 
-      <section className="card">
-        <AiDisclaimerNotice />
-        <div className="btn-row">
-          <button
-            type="button"
-            className="btn ghost"
-            disabled={aiBusy || busy || !isWorkPermissionAiAvailable()}
-            onClick={() => void fillViaAi()}
-          >
-            {aiBusy ? p.permissionsAiBusy : p.permissionsFillAll.replace('NOVA Safety', APP_NAME)}
-          </button>
-        </div>
-        {(aiBusy && !busy) ? (
-          <LoadingProgress
-            label={stage ?? `${APP_NAME}…`}
-            indeterminate
-            withTips
-            fullscreen
-          />
-        ) : null}
-      </section>
-
       <DocumentKitSummary templates={templates} />
 
       {bundle.documents.map((doc) => {
@@ -371,19 +318,11 @@ export function PermissionsPage() {
               <div className="work-perm-card__actions btn-row">
                 <button
                   type="button"
-                  className="btn ghost small"
-                  disabled={aiBusy || busy || !isWorkPermissionAiAvailable()}
-                  onClick={() => void fillViaAi(doc.kind)}
-                >
-                  {aiBusy ? c.aiBusy : c.aiSections}
-                </button>
-                <button
-                  type="button"
                   className="btn primary small"
-                  disabled={busy || aiBusy}
+                  disabled={busy}
                   onClick={() => void generateSinglePermission(doc.kind)}
                 >
-                  {busy && !aiBusy ? c.forming : c.generatePermission}
+                  {busy ? c.forming : c.generatePermission}
                 </button>
                 {doc.pdfBase64 || doc.generatedAtIso ? (
                   <button
@@ -399,7 +338,7 @@ export function PermissionsPage() {
 
             <WorkPermissionFormEditor
               doc={doc}
-              hidePreWorkSection
+              variant="permissions-wizard"
               onChange={(form) => updateDoc(doc.kind, { form })}
             />
           </section>
@@ -407,39 +346,19 @@ export function PermissionsPage() {
       })}
 
       <section className="card">
-        <p className="muted small">
-          Заполните форму и нажмите «Сформировать разрешение» для каждого вида работ.
-          Газотесты вносит только ПАС (ERT) на карточке выданного наряда — данные сразу
-          попадают в PDF разрешения и общий пакет.
-        </p>
         <div className="btn-row" style={{ marginTop: '0.75rem' }}>
           <button
             type="button"
-            className="btn ghost"
-            disabled={aiBusy || busy || !isWorkPermissionAiAvailable()}
-            onClick={() => void fillViaAi()}
-          >
-            {aiBusy ? 'ИИ заполняет…' : `Заполнить все через ${APP_NAME}`}
-          </button>
-          <button
-            type="button"
-            className="btn"
+            className="btn primary"
             disabled={busy}
             onClick={() => void submitPackage()}
           >
-            {busy && !aiBusy ? stage ?? p.permissionsSubmitting : p.permissionsSubmit}
+            {busy ? stage ?? p.permissionsSubmitting : p.permissionsSubmit}
           </button>
         </div>
-        {aiBusy ? (
+        {busy ? (
           <LoadingProgress
-            label={stage ?? `${APP_NAME}…`}
-            indeterminate
-            withTips
-            fullscreen
-          />
-        ) : busy ? (
-          <LoadingProgress
-            label={stage ?? `${APP_NAME}…`}
+            label={stage ?? c.saving}
             indeterminate
             withTips
             fullscreen
