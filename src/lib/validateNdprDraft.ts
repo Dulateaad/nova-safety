@@ -1,7 +1,8 @@
 import { resolveDefaultNdprParticipantUids, sanitizeNdprApprovalUids } from '../config/defaultNdprSigners'
 import type { DemoUser, PermitDraft } from '../types/domain'
 import { resolvePerformerUidForPackage } from './permitAccess'
-import { loadPprForm, pprHasNdprSource } from './pprAutosave'
+import { shouldAutofillNdprFromPpr } from './ndprManualFill'
+import { loadPprForm } from './pprAutosave'
 import { resolveExecutorRows } from './resolveWorkerUid'
 import { permitRequiresErtApproval } from './fireWorkApproval'
 
@@ -59,7 +60,7 @@ export function prepareNdprDraftForValidation(
   directory: DemoUser[],
 ): PermitDraft {
   const ppr = loadPprForm()
-  const hasPprSource = pprHasNdprSource(ppr)
+  const hasPprSource = shouldAutofillNdprFromPpr(ppr)
   const defaults = resolveDefaultNdprParticipantUids(directory)
   const sanitized = hasPprSource ? sanitizeNdprApprovalUids(draft, directory) : draft
 

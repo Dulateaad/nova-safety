@@ -16,8 +16,8 @@ import { extractTextFromPprAttachment } from '../lib/pprDocText'
 import { isPdfAttachment } from '../lib/pprGeminiPdfExtract'
 import { titleFromFileName } from '../lib/pprAttachment'
 import { effectivePprWorkTitle, isLikelyFileNameTitle, normalizePprWorkTitle } from '../lib/narjadTitle'
-import { clearPackageSession } from '../lib/packageSession'
-import { clearResumePermitId } from '../lib/resumePermitPackage'
+import { clearPackageSession, setNdprManualFillMode } from '../lib/packageSession'
+import { saveNewPermitDraftToSession } from '../lib/newPermitDraftAutosave'
 import { setPprGatePassed } from '../lib/pprGate'
 import { APP_NAME } from '../config/branding'
 import { useLanguage } from '../context/LanguageContext'
@@ -38,12 +38,12 @@ import {
   pprExtractProgressPercent,
 } from '../lib/loadingProgress'
 import { emptyPprForm, type PprAttachment, type PprForm } from '../types/ppr'
-import { NEW_PERMIT_DRAFT_AUTOSAVE_KEY } from '../lib/newPermitDraftAutosave'
 import { emptyPermitDraft } from '../uog/permitDefaults'
 
 type NdprFillMode = null | 'ppr' | 'manual'
 
 function goToNdprFromPpr(form: PprForm, nav: ReturnType<typeof useNavigate>) {
+  setNdprManualFillMode(false)
   applyPprToNdprSession(form)
   savePprForm(form)
   setPprGatePassed()
@@ -51,16 +51,10 @@ function goToNdprFromPpr(form: PprForm, nav: ReturnType<typeof useNavigate>) {
 }
 
 function goToNdprManual(nav: ReturnType<typeof useNavigate>) {
+  clearPackageSession()
+  setNdprManualFillMode(true)
   savePprForm(emptyPprForm())
-  clearResumePermitId()
-  try {
-    sessionStorage.setItem(
-      NEW_PERMIT_DRAFT_AUTOSAVE_KEY,
-      JSON.stringify(emptyPermitDraft()),
-    )
-  } catch {
-    /* ignore */
-  }
+  saveNewPermitDraftToSession(emptyPermitDraft())
   setPprGatePassed()
   nav('/new?from=ppr&manual=1')
 }

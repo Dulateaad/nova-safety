@@ -32,7 +32,8 @@ import {
   restoreNewPermitDraftFromSession,
   saveNewPermitDraftToSession,
 } from '../lib/newPermitDraftAutosave'
-import { clearPackageSession, PACKAGE_CLEARED_EVENT } from '../lib/packageSession'
+import { clearPackageSession, PACKAGE_CLEARED_EVENT, isNdprManualFillMode, setNdprManualFillMode } from '../lib/packageSession'
+import { shouldAutofillNdprFromPpr } from '../lib/ndprManualFill'
 import { clearResumePermitId } from '../lib/resumePermitPackage'
 import { resolvePerformerUidForPackage } from '../lib/permitAccess'
 import {
@@ -103,15 +104,18 @@ function loadInitialPermitDraft(): PermitDraft {
     }
     const fromPpr = params.get('from') === 'ppr'
     const manual = params.get('manual') === '1'
+    if (isNdprManualFillMode()) {
+      if (fromPpr && manual) return emptyPermitDraft()
+      return restoreNewPermitDraftFromSession()
+    }
     if (fromPpr && manual) {
       return emptyPermitDraft()
     }
     const base = fromPpr ? emptyPermitDraft() : restoreNewPermitDraftFromSession()
     const ppr = loadPprForm()
-    let draft =
-      isPprGatePassed() || pprHasNdprSource(ppr)
-        ? mergePermitDraftWithPpr(base, ppr)
-        : base
+    let draft = shouldAutofillNdprFromPpr(ppr)
+      ? mergePermitDraftWithPpr(base, ppr)
+      : base
     if (fromPpr) {
       clearResumePermitId()
       draft = { ...draft, executors: [] }
@@ -229,7 +233,7 @@ export function NewPermitPage() {
   useEffect(() => {
     if (directory.length === 0) return
     const ppr = loadPprForm()
-    if (!pprHasNdprSource(ppr) || participantsSeeded.current) {
+    if (!shouldAutofillNdprFromPpr(ppr) || participantsSeeded.current) {
       return
     }
     participantsSeeded.current = true
@@ -268,7 +272,7 @@ export function NewPermitPage() {
 
   useEffect(() => {
     if (directory.length === 0) return
-    if (!pprHasNdprSource(loadPprForm())) return
+    if (!shouldAutofillNdprFromPpr()) return
     setDraft((d) => {
       const next = resolveExecutorRows(d.executors, directory)
       if (next.some((row, i) => row.userUid !== d.executors[i]?.userUid)) {
@@ -280,7 +284,7 @@ export function NewPermitPage() {
 
   useEffect(() => {
     if (user?.role !== 'performer' || directory.length === 0) return
-    if (!pprHasNdprSource(loadPprForm())) return
+    if (!shouldAutofillNdprFromPpr()) return
     setDraft((d) => {
       const performerUid = resolvePerformerUidForPackage(d.performerUid, user, directory)
       const badgeNo = resolveUserBadgeNo(performerUid, directory)
@@ -305,7 +309,7 @@ export function NewPermitPage() {
   useEffect(() => {
     if (pprEnriched.current) return
     const ppr = loadPprForm()
-    if (!pprHasNdprSource(ppr)) return
+    if (!shouldAutofillNdprFromPpr(ppr)) return
     pprEnriched.current = true
     void resolvePprForNdpr(ppr).then(({ ppr: enriched, docText }) => {
       savePprForm(enriched)
@@ -352,7 +356,7 @@ export function NewPermitPage() {
     [preparedDraft],
   )
 
-  const manualFill = !pprHasNdprSource(loadPprForm())
+  const manualFill = isNdprManualFillMode() || !pprHasNdprSource(loadPprForm())
   const f02 = draft.f02
   const isProducer = user?.role === 'performer'
 
@@ -406,6 +410,7 @@ export function NewPermitPage() {
     saveNewPermitDraftToSession(
       mergePreparedNdprDraftForSession(current, prepared),
     )
+    setNdprManualFillMode(false)
     setNdGatePassed()
     nav('/risk-assessment')
   }
