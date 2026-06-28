@@ -17,6 +17,7 @@ import { isPdfAttachment } from '../lib/pprGeminiPdfExtract'
 import { titleFromFileName } from '../lib/pprAttachment'
 import { effectivePprWorkTitle, isLikelyFileNameTitle, normalizePprWorkTitle } from '../lib/narjadTitle'
 import { clearPackageSession } from '../lib/packageSession'
+import { clearResumePermitId } from '../lib/resumePermitPackage'
 import { setPprGatePassed } from '../lib/pprGate'
 import { APP_NAME } from '../config/branding'
 import { useLanguage } from '../context/LanguageContext'
@@ -51,6 +52,7 @@ function goToNdprFromPpr(form: PprForm, nav: ReturnType<typeof useNavigate>) {
 
 function goToNdprManual(nav: ReturnType<typeof useNavigate>) {
   savePprForm(emptyPprForm())
+  clearResumePermitId()
   try {
     sessionStorage.setItem(
       NEW_PERMIT_DRAFT_AUTOSAVE_KEY,

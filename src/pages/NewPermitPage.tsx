@@ -229,14 +229,7 @@ export function NewPermitPage() {
   useEffect(() => {
     if (directory.length === 0) return
     const ppr = loadPprForm()
-    if (
-      !(
-        isPprGatePassed() ||
-        pprHasNdprSource(ppr) ||
-        searchParams.get('from') === 'ppr'
-      ) ||
-      participantsSeeded.current
-    ) {
+    if (!pprHasNdprSource(ppr) || participantsSeeded.current) {
       return
     }
     participantsSeeded.current = true
@@ -271,10 +264,11 @@ export function NewPermitPage() {
         registrationRefNo: d.registrationRefNo.trim() || '',
       }
     })
-  }, [directory, permits, user?.id, user?.role, searchParams])
+  }, [directory, permits, user?.id, user?.role])
 
   useEffect(() => {
     if (directory.length === 0) return
+    if (!pprHasNdprSource(loadPprForm())) return
     setDraft((d) => {
       const next = resolveExecutorRows(d.executors, directory)
       if (next.some((row, i) => row.userUid !== d.executors[i]?.userUid)) {
@@ -286,6 +280,7 @@ export function NewPermitPage() {
 
   useEffect(() => {
     if (user?.role !== 'performer' || directory.length === 0) return
+    if (!pprHasNdprSource(loadPprForm())) return
     setDraft((d) => {
       const performerUid = resolvePerformerUidForPackage(d.performerUid, user, directory)
       const badgeNo = resolveUserBadgeNo(performerUid, directory)

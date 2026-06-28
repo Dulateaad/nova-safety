@@ -3,7 +3,7 @@ import { initialNdprResponses } from './ndprChecklistTemplate'
 
 export function emptyF02() {
   return {
-    company: 'ТОО «Урал Ойл энд Газ»',
+    company: '',
     badgeNo: '',
     shift: '' as const,
     startDate: '',
@@ -31,10 +31,10 @@ export function emptyPermitDraft(): PermitDraft {
     workStages: '',
     workVolume: '',
     toolsAndEquipment: '',
-    issuerUid: 'u-issuer-temirlan',
-    permitterUid: 'u-permitter',
-    performerUid: 'u-performer-abylay',
-    leadExpertUid: 'u-lead',
+    issuerUid: '',
+    permitterUid: '',
+    performerUid: '',
+    leadExpertUid: '',
     ertUid: undefined,
     isContractorPermit: false,
     samePersonException: { allowed: false, reason: '' },

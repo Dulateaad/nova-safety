@@ -1,7 +1,7 @@
 import { resolveDefaultNdprParticipantUids, sanitizeNdprApprovalUids } from '../config/defaultNdprSigners'
 import type { DemoUser, PermitDraft } from '../types/domain'
 import { resolvePerformerUidForPackage } from './permitAccess'
-import { loadPprForm } from './pprAutosave'
+import { loadPprForm, pprHasNdprSource } from './pprAutosave'
 import { resolveExecutorRows } from './resolveWorkerUid'
 import { permitRequiresErtApproval } from './fireWorkApproval'
 
@@ -59,23 +59,36 @@ export function prepareNdprDraftForValidation(
   directory: DemoUser[],
 ): PermitDraft {
   const ppr = loadPprForm()
+  const hasPprSource = pprHasNdprSource(ppr)
   const defaults = resolveDefaultNdprParticipantUids(directory)
-  const sanitized = sanitizeNdprApprovalUids(draft, directory)
+  const sanitized = hasPprSource ? sanitizeNdprApprovalUids(draft, directory) : draft
 
   return {
     ...draft,
     ...sanitized,
-    siteName: pickText(draft.siteName, ppr.siteName),
-    title: pickText(draft.title, ppr.workTitle),
-    workStages: pickText(draft.workStages, ppr.workStagesText, ppr.workDescription),
-    toolsAndEquipment: pickText(draft.toolsAndEquipment, ppr.toolsAndEquipment),
-    performerUid: pickText(
-      resolvePerformerUidForPackage(sanitized.performerUid, user, directory),
-      defaults.performerUid,
-    ),
-    permitterUid: pickText(sanitized.permitterUid, defaults.permitterUid),
-    issuerUid: pickText(sanitized.issuerUid, defaults.issuerUid),
-    leadExpertUid: pickText(sanitized.leadExpertUid, defaults.leadExpertUid),
+    siteName: hasPprSource ? pickText(draft.siteName, ppr.siteName) : draft.siteName,
+    title: hasPprSource ? pickText(draft.title, ppr.workTitle) : draft.title,
+    workStages: hasPprSource
+      ? pickText(draft.workStages, ppr.workStagesText, ppr.workDescription)
+      : draft.workStages,
+    toolsAndEquipment: hasPprSource
+      ? pickText(draft.toolsAndEquipment, ppr.toolsAndEquipment)
+      : draft.toolsAndEquipment,
+    performerUid: hasPprSource
+      ? pickText(
+          resolvePerformerUidForPackage(sanitized.performerUid, user, directory),
+          defaults.performerUid,
+        )
+      : sanitized.performerUid.trim(),
+    permitterUid: hasPprSource
+      ? pickText(sanitized.permitterUid, defaults.permitterUid)
+      : sanitized.permitterUid.trim(),
+    issuerUid: hasPprSource
+      ? pickText(sanitized.issuerUid, defaults.issuerUid)
+      : sanitized.issuerUid.trim(),
+    leadExpertUid: hasPprSource
+      ? pickText(sanitized.leadExpertUid, defaults.leadExpertUid)
+      : sanitized.leadExpertUid.trim(),
     ertUid: permitRequiresErtApproval(draft)
       ? draft.ertUid?.trim() || undefined
       : undefined,
@@ -83,7 +96,9 @@ export function prepareNdprDraftForValidation(
     f02: {
       ...draft.f02,
       ...sanitized.f02,
-      company: pickText(draft.f02.company, ppr.contractorOrg),
+      company: hasPprSource
+        ? pickText(draft.f02.company, ppr.contractorOrg)
+        : draft.f02.company,
     },
   }
 }
