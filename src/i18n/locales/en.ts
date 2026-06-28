@@ -226,6 +226,10 @@ export const en: Locale = {
     emptyHintCreate:
       'Click «Create work permit» above: Source document → Work permit → HSE measures.',
     emptyHintWait: 'Permits appear after the package is submitted for approval.',
+    emptyHintPermitter:
+      'The journal fills when the work supervisor submits a permit for approval. Then open the permit and complete section 3 — the «Available» column.',
+    emptyHintApprover:
+      'The journal fills after the work supervisor submits a package. Watch for signing and approval tasks above.',
     emptyFilterTitle: 'No permits in this tab',
     emptyFilterIssued:
       'After all approvers sign, the permit is automatically issued and appears here.',

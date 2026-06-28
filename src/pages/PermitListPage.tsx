@@ -37,6 +37,7 @@ import { isInspectorUser } from '../lib/inspectorAccess'
 import {
   filterPermitsForUser,
   canUserCreatePermitPackage,
+  journalEmptyHint,
 } from '../lib/permitAccess'
 import { canUserDeletePermit } from '../lib/permitDelete'
 import {
@@ -669,7 +670,7 @@ export function PermitListPage() {
         <div className="empty-state card">
           <p className="strong">{j.emptyTitle}</p>
           <p className="muted small">
-            {canCreate ? j.emptyHintCreate : j.emptyHintWait}
+            {journalEmptyHint(user, j)}
           </p>
           {canCreate ? (
             <Link className="btn primary" to="/ppr?fresh=1">

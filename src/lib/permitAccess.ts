@@ -71,6 +71,29 @@ export function submitPermitPackageDeniedReason(user: DemoUser | null): string {
   return fillTemplate(a.submitDenied, { role: roleLabel(user.role) })
 }
 
+const APPROVER_EMPTY_HINT_ROLES = new Set<UserRole>([
+  'issuer',
+  'leadExpert',
+  'ert',
+  'safety',
+])
+
+/** Подсказка в пустом журнале — по роли пользователя. */
+export function journalEmptyHint(
+  user: DemoUser | null,
+  messages: {
+    emptyHintCreate: string
+    emptyHintWait: string
+    emptyHintPermitter: string
+    emptyHintApprover: string
+  },
+): string {
+  if (canUserCreatePermitPackage(user)) return messages.emptyHintCreate
+  if (user?.role === 'permitter') return messages.emptyHintPermitter
+  if (user && APPROVER_EMPTY_HINT_ROLES.has(user.role)) return messages.emptyHintApprover
+  return messages.emptyHintWait
+}
+
 /** Составитель пакета — всегда текущий пользователь с ролью «производитель работ». */
 export function resolvePerformerUidForPackage(
   draftPerformerUid: string,

@@ -206,6 +206,8 @@ export type Locale = {
     emptyTitle: string
     emptyHintCreate: string
     emptyHintWait: string
+    emptyHintPermitter: string
+    emptyHintApprover: string
     emptyFilterTitle: string
     emptyFilterIssued: string
     emptyFilterOther: string
@@ -509,6 +511,10 @@ export const ru: Locale = {
     emptyHintCreate:
       'Нажмите «Создать НДПР» выше: Исходный документ → НДПР → Мероприятия по ОТ, ТБ и ООС.',
     emptyHintWait: 'Наряды появятся после отправки пакета на согласование.',
+    emptyHintPermitter:
+      'Журнал заполнится, когда производитель работ отправит наряд на согласование. Тогда откройте наряд в журнале и заполните раздел 3 — колонку «Имеется».',
+    emptyHintApprover:
+      'Журнал заполнится после отправки пакета производителем работ. Следите за заданиями на подписание и согласование выше.',
     emptyFilterTitle: 'Нет нарядов в этой вкладке',
     emptyFilterIssued:
       'После подписи всех согласующих наряд автоматически получает статус «Выдан» и появляется здесь.',
