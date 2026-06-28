@@ -29,6 +29,13 @@ export function permissionClosureDeniedReason(permit: Permit, actor: DemoUser): 
 
 const EARLY_CLOSE_STATUSES = new Set<Permit['status']>(['issued', 'in_progress', 'suspended'])
 
+/** НДПР полностью согласован и выдан — доступны закрытие, продление, бригада и замена производителя. */
+export const POST_APPROVAL_STATUSES = EARLY_CLOSE_STATUSES
+
+export function isPermitPostApproval(permit: Permit): boolean {
+  return POST_APPROVAL_STATUSES.has(permit.status)
+}
+
 /** Производитель (или координатор) может досрочно закрыть выданный / выполняемый НДПР. */
 export function canCloseNdprEarly(permit: Permit, actor: DemoUser): boolean {
   if (!EARLY_CLOSE_STATUSES.has(permit.status)) return false

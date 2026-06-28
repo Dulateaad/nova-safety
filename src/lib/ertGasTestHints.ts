@@ -2,8 +2,6 @@ import type { DemoUser, Permit, PermitStatus } from '../types/domain'
 
 import { fillTemplate, localeMessages, statusLabel } from '../i18n/getLocale'
 
-import { permitRequiresErtApproval } from './fireWorkApproval'
-
 import { WORK_PERMISSION_BY_KIND } from '../config/workPermissionsConfig'
 
 import { requiresWorkPermissions } from './workPermissions'
@@ -26,12 +24,14 @@ const GAS_TEST_EDIT_STATUSES = new Set<PermitStatus>([
 
 
 
+export function permitHasGasTestDocuments(permit: Permit): boolean {
+  const docs = permit.workPermissions?.documents ?? []
+  return docs.some((doc) => WORK_PERMISSION_BY_KIND[doc.kind].requiresGasTests)
+}
+
 export function canErtEditGasTests(permit: Permit): boolean {
-
-  if (!permitRequiresErtApproval(permit)) return false
-
+  if (!permitHasGasTestDocuments(permit)) return false
   return GAS_TEST_EDIT_STATUSES.has(permit.status)
-
 }
 
 
@@ -89,8 +89,7 @@ export function ertGasTestBlockedHint(status: PermitStatus): string {
 
 
 export function ertGasTestDocsNeedingFill(permit: Permit): number {
-
-  if (!permitRequiresErtApproval(permit)) return 0
+  if (!permitHasGasTestDocuments(permit)) return 0
 
   const docs = permit.workPermissions?.documents ?? []
 
@@ -109,8 +108,7 @@ export function ertGasTestDocsNeedingFill(permit: Permit): number {
 
 
 export function ertGasTestTaskSummary(permit: Permit): string | null {
-
-  if (!permitRequiresErtApproval(permit)) return null
+  if (!permitHasGasTestDocuments(permit)) return null
 
   const g = localeMessages().gasTest
 
@@ -177,8 +175,7 @@ export function ertGasTestTasksForUser(
   const items: ErtGasTestTask[] = []
 
   for (const permit of permits) {
-
-    if (!permitRequiresErtApproval(permit)) continue
+    if (!permitHasGasTestDocuments(permit)) continue
 
     if (!requiresWorkPermissions(permit)) continue
 

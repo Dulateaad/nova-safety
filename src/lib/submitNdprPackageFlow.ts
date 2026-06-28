@@ -3,8 +3,38 @@ import type { DemoUser, Permit, PermitDraft } from '../types/domain'
 import type { AsorForm } from '../types/asor'
 import type { PprForm } from '../types/ppr'
 import { clearPackageSession } from './packageSession'
-import { packageDraftToPermitFields } from './resumePermitPackage'
-import { readResumePermitId } from './resumePermitPackage'
+import {
+  packageDraftToPermitFields,
+  readResumePermitId,
+  clearResumePermitId,
+  writeResumePermitId,
+} from './resumePermitPackage'
+
+function isPermitNotFoundError(e: unknown): boolean {
+  return e instanceof Error && e.message === 'Permit not found'
+}
+
+/** Обновляет черновик по resume-id или создаёт новый наряд, если id устарел. */
+export async function ensurePermitForPackageSubmit(args: {
+  packageDraft: PermitDraft
+  createPermit: (draft: PermitDraft) => Promise<Permit>
+  updatePermit: (id: string, patch: Partial<Permit>) => Promise<void>
+}): Promise<Permit> {
+  const { packageDraft, createPermit, updatePermit } = args
+  const resumePermitId = readResumePermitId()
+  if (resumePermitId) {
+    try {
+      await updatePermit(resumePermitId, packageDraftToPermitFields(packageDraft))
+      return { id: resumePermitId, ...packageDraft } as Permit
+    } catch (e) {
+      if (!isPermitNotFoundError(e)) throw e
+      clearResumePermitId()
+    }
+  }
+  const created = await createPermit(packageDraft)
+  writeResumePermitId(created.id)
+  return created
+}
 
 export type SubmitPackageDeps = {
   packageDraft: PermitDraft
@@ -28,14 +58,7 @@ export async function executeNdprPackageSubmit(
     userDirectory,
   } = deps
 
-  const resumePermitId = readResumePermitId()
-  let p: Permit
-  if (resumePermitId) {
-    await updatePermit(resumePermitId, packageDraftToPermitFields(packageDraft))
-    p = { id: resumePermitId, ...packageDraft } as Permit
-  } else {
-    p = await createPermit(packageDraft)
-  }
+  const p = await ensurePermitForPackageSubmit({ packageDraft, createPermit, updatePermit })
 
   if (packageDraft.workPermissions) {
     await updatePermit(p.id, { workPermissions: packageDraft.workPermissions })

@@ -28,15 +28,18 @@ export async function syncWorkPermissionsLive(args: {
   ).documents
 
   const kindsToRender = renderKinds?.length ? new Set(renderKinds) : null
+  const pdfOpts = {
+    includeClosureSection: permit.status === 'closed',
+  }
 
   if (kindsToRender) {
     documents = await Promise.all(
       documents.map(async (doc) =>
-        kindsToRender.has(doc.kind) ? await renderSingleWorkPermission(doc) : doc,
+        kindsToRender.has(doc.kind) ? await renderSingleWorkPermission(doc, pdfOpts) : doc,
       ),
     )
   } else {
-    documents = await renderWorkPermissionsBundle(documents)
+    documents = await renderWorkPermissionsBundle(documents, pdfOpts)
   }
 
   const bundle: WorkPermissionsBundle = {

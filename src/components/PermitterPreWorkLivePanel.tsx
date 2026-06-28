@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Permit } from '../types/domain'
 import type { DemoUser } from '../types/domain'
-import { WorkPermissionIcon } from './WorkPermissionIcon'
 import {
-  canPerformerEditPreWorkChecks,
-  performerPreWorkBlockedHint,
+  canPermitterEditPreWorkChecks,
+  permitterPreWorkBlockedHint,
   preWorkChecksStarted,
 } from '../lib/permitterPreWorkHints'
 import { openWorkPermissionPdf } from '../lib/openWorkPermissionPdf'
@@ -16,6 +15,7 @@ import type {
 } from '../types/workPermissions'
 import { useLanguage } from '../context/LanguageContext'
 import { LoadingProgress } from './LoadingProgress'
+import { WorkPermissionIcon } from './WorkPermissionIcon'
 
 function PreWorkChecksEditor(props: {
   group: WorkPermissionCheckboxGroup
@@ -84,7 +84,7 @@ export function PermitterPreWorkLivePanel(props: {
   const c = t.common
   const pwc = t.preWorkCheck
   const serverBundle = permit.workPermissions
-  const canEdit = canPerformerEditPreWorkChecks(permit, actor)
+  const canEdit = canPermitterEditPreWorkChecks(permit, actor)
   const [localBundle, setLocalBundle] = useState<WorkPermissionsBundle | null>(serverBundle ?? null)
   const [dirty, setDirty] = useState(false)
   const [dirtyKinds, setDirtyKinds] = useState<WorkPermissionKind[]>([])
@@ -161,7 +161,7 @@ export function PermitterPreWorkLivePanel(props: {
   if (savedConfirmed && !dirty) {
     const firstKind = visibleDocs[0].kind
     return (
-      <section className="card work-perm-ert-panel" id="performer-pre-work">
+      <section className="card work-perm-ert-panel" id="permitter-pre-work">
         <header className="work-perm-ert-panel__head">
           <h2 style={{ margin: 0 }}>{pwc.panelTitle}</h2>
         </header>
@@ -194,7 +194,7 @@ export function PermitterPreWorkLivePanel(props: {
   }
 
   return (
-    <section className="card work-perm-ert-panel" id="performer-pre-work">
+    <section className="card work-perm-ert-panel" id="permitter-pre-work">
       <header className="work-perm-ert-panel__head">
         <h2 style={{ margin: 0 }}>{pwc.panelTitle}</h2>
         <p className="muted small" style={{ margin: '0.25rem 0 0' }}>
@@ -204,13 +204,13 @@ export function PermitterPreWorkLivePanel(props: {
 
       {canEdit ? (
         <ol className="work-perm-ert-panel__steps small">
-          <li>{pwc.stepFill}</li>
+          <li>Отметьте пункты, которые имеются на месте (колонка «Имеется» в PDF).</li>
           <li>{pwc.stepSave}</li>
           <li>{pwc.stepPdf}</li>
         </ol>
       ) : (
         <p className="work-perm-ert-panel__blocked small">
-          {performerPreWorkBlockedHint(permit.status)}
+          {permitterPreWorkBlockedHint(permit.status)}
         </p>
       )}
 

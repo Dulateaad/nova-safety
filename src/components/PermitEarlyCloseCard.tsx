@@ -16,7 +16,9 @@ export function PermitEarlyCloseCard(props: {
   const hint = closeNdprEarlyDeniedReason(permit, actor)
 
   if (actor.role !== 'performer' && actor.role !== 'coordinator') return null
-  if (['closed', 'archived', 'annulled'].includes(permit.status)) return null
+  if (['closed', 'archived', 'annulled', 'on_approval', 'draft'].includes(permit.status)) {
+    return null
+  }
 
   return (
     <section className="card permit-early-close" style={{ marginBottom: '1rem' }}>

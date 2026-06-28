@@ -12,6 +12,7 @@ import type {
   WorkPermissionCheckboxGroup,
   WorkPermissionCheckboxItem,
   WorkPermissionDocument,
+  WorkPermissionForm,
   WorkPermissionSignRole,
 } from '../types/workPermissions'
 import {
@@ -131,23 +132,17 @@ function workScopeBlock(doc: WorkPermissionDocument): PdfBlock {
   }
 }
 
-function equipmentBulletBlock(text: string): PdfBlock {
+function equipmentInlineBlock(text: string): PdfBlock {
   const items = parseToolsAndEquipmentList(text)
-  const list =
+  const body =
     items.length > 0
-      ? items
+      ? items.join(', ')
       : text
           .split(/[\n;]+/)
           .map((s) => s.trim())
           .filter(Boolean)
-  if (list.length === 0) {
-    return { text: ' ', fontSize: FS, margin: [0, 0, 0, 4] }
-  }
-  return {
-    ul: list.map((item) => `— ${item}`),
-    fontSize: FS,
-    margin: [0, 0, 0, 4],
-  }
+          .join(', ')
+  return { text: body || ' ', fontSize: FS, margin: [0, 0, 0, 4] }
 }
 
 function itemById(items: WorkPermissionCheckboxItem[], id: string): WorkPermissionCheckboxItem | undefined {
@@ -242,6 +237,24 @@ function metaHeaderTable(
   ]
 }
 
+function gasTestModesBlock(f: WorkPermissionForm): PdfBlock[] {
+  const primary = f.gasTestPrimary ?? true
+  const continuous = f.gasTestContinuous ?? false
+  if (!primary && !continuous) return []
+  const lines: string[] = []
+  if (primary) {
+    lines.push(`Первичный — ${f.gasTestPrimaryInterval?.trim() || 'каждые 2 часа'}`)
+  }
+  if (continuous) {
+    lines.push('Постоянный')
+  }
+  if (!lines.length) return []
+  return [
+    { text: 'Виды газотеста', bold: true, fontSize: FS, margin: [0, 4, 0, 2] },
+    { ul: lines, fontSize: FS, margin: [0, 0, 0, 4] },
+  ]
+}
+
 function section1Blocks(doc: WorkPermissionDocument): PdfBlock[] {
   const f = doc.form
   if (doc.kind === 'confined_space') {
@@ -250,7 +263,8 @@ function section1Blocks(doc: WorkPermissionDocument): PdfBlock[] {
       { text: 'Вход в замкнутое пространство для:', bold: true, fontSize: FS, margin: [0, 0, 0, 2] },
       workScopeBlock(doc),
       { text: 'Инструменты и оборудование:', bold: true, fontSize: FS, margin: [0, 0, 0, 2] },
-      equipmentBulletBlock(f.equipmentAndDocs),
+      equipmentInlineBlock(f.equipmentAndDocs),
+      ...gasTestModesBlock(f),
     ]
   }
   const who =
@@ -259,10 +273,10 @@ function section1Blocks(doc: WorkPermissionDocument): PdfBlock[] {
       : '1.  Заявка на проведение работ (заполняется производителем работ)'
   return [
     sectionTitle(who),
-    { text: 'Объём работ', bold: true, fontSize: FS, margin: [0, 0, 0, 2] },
+    { text: 'Объём работ —', bold: true, fontSize: FS, margin: [0, 0, 0, 2] },
     workScopeBlock(doc),
     { text: 'Инструменты и оборудование', bold: true, fontSize: FS, margin: [0, 0, 0, 2] },
-    equipmentBulletBlock(f.equipmentAndDocs),
+    equipmentInlineBlock(f.equipmentAndDocs),
   ]
 }
 
@@ -382,12 +396,26 @@ function signBlock(
   ]
 }
 
-function closureSection(sectionNum: number): PdfBlock[] {
+export type BuildWorkPermissionPdfOptions = {
+  /** Раздел «Передача рабочего участка» — только после закрытия НДПР. */
+  includeClosureSection?: boolean
+}
+
+function closureSection(
+  sectionNum: number,
+  closureChecks: WorkPermissionCheckboxGroup | undefined,
+): PdfBlock[] {
+  const items = closureChecks?.items ?? []
+  const lineFor = (index: number) => {
+    const item = items[index]
+    const label = CLOSURE_CHECKBOX_LINES[index] ?? item?.label ?? ''
+    return `${checkboxMark(item?.checked ?? false)}  ${label}`
+  }
   return [
     sectionTitle(`${sectionNum}.  Передача рабочего участка / возврат оборудования / закрытие разрешения`),
     { text: 'Работы / оборудование, указанные в разделе 1', fontSize: FS, margin: [0, 0, 0, 4] },
-    ...CLOSURE_CHECKBOX_LINES.map((line) => ({
-      text: `[ ]  ${line}`,
+    ...CLOSURE_CHECKBOX_LINES.map((_, index) => ({
+      text: lineFor(index),
       fontSize: FS,
       margin: [0, 0, 0, 2],
     })),
@@ -401,6 +429,30 @@ function confinedSpaceMiddleSections(doc: WorkPermissionDocument, palette: WorkP
     ...checkboxLines(f.confinedSpaceTypes),
     { text: 'Ф.И.О. дежурного наблюдателя:', bold: true, fontSize: FS, margin: [0, 4, 0, 2] },
     observerTable(f.confinedSpaceNotes, palette),
+  ]
+}
+
+function compactExtensionTable(sectionNum: number, palette: WorkPermissionPdfPalette): PdfBlock[] {
+  return [
+    sectionTitle(`${sectionNum}.  Продление разрешения`),
+    {
+      table: {
+        widths: ['15%', '28%', '28%', '29%'],
+        body: [
+          [
+            hdr('Дата', palette),
+            hdr('Выдающий НД', palette),
+            hdr('Производитель работ', palette),
+            hdr('Допускающий', palette),
+          ],
+          ...Array.from({ length: 3 }, () =>
+            [cell(' ', palette), cell(' ', palette), cell(' ', palette), cell(' ', palette)],
+          ),
+        ],
+      },
+      layout: TABLE_LAYOUT,
+      margin: [0, 0, 0, 4],
+    },
   ]
 }
 
@@ -429,7 +481,7 @@ function extensionTable(sectionNum: number, palette: WorkPermissionPdfPalette): 
   ]
 }
 
-function buildContent(doc: WorkPermissionDocument): PdfBlock[] {
+function buildContent(doc: WorkPermissionDocument, opts?: BuildWorkPermissionPdfOptions): PdfBlock[] {
   const palette = WORK_PERMISSION_PDF_PALETTE[doc.kind]
   const f = doc.form
   const nums = signatureSectionNumbers(doc.kind)
@@ -446,7 +498,7 @@ function buildContent(doc: WorkPermissionDocument): PdfBlock[] {
     content.push(...gasTestSection(2, doc.gasTests, f.additionalNotes, palette))
     const checksTitle =
       doc.kind === 'open_flame_fire'
-        ? '3.  Проверки, выполняемые на рабочей площадке (заполняется допускающим)'
+        ? '3.  Проверки, выполняемые на рабочей площадке'
         : '3.  Проверки, выполняемые на рабочем месте'
     content.push(sectionTitle(checksTitle))
     content.push(
@@ -459,14 +511,19 @@ function buildContent(doc: WorkPermissionDocument): PdfBlock[] {
     )
   }
 
-  for (const role of WORK_PERMISSION_SIGN_ROLES) {
-    const num =
-      role === 'issuer' ? nums.issuer : role === 'performer' ? nums.performer : nums.permitter
-    content.push(...signBlock(num, palette, role, doc))
+  if (!nums.useCompactLayout) {
+    for (const role of WORK_PERMISSION_SIGN_ROLES) {
+      const num =
+        role === 'issuer' ? nums.issuer : role === 'performer' ? nums.performer : nums.permitter
+      content.push(...signBlock(num, palette, role, doc))
+    }
+    content.push(...extensionTable(nums.extension, palette))
+  } else {
+    content.push(...compactExtensionTable(nums.extension, palette))
   }
-
-  content.push(...extensionTable(nums.extension, palette))
-  content.push(...closureSection(nums.closure))
+  if (opts?.includeClosureSection) {
+    content.push(...closureSection(nums.closure, f.closureChecks))
+  }
 
   return content
 }
@@ -474,6 +531,7 @@ function buildContent(doc: WorkPermissionDocument): PdfBlock[] {
 export async function buildWorkPermissionPdf(
   doc: WorkPermissionDocument,
   pdfMake?: Awaited<ReturnType<typeof initPdfMake>>,
+  opts?: BuildWorkPermissionPdfOptions,
 ): Promise<{ base64: string; fileName: string; documentHash: string }> {
   const engine = pdfMake ?? (await initPdfMake())
   const definition = {
@@ -481,7 +539,7 @@ export async function buildWorkPermissionPdf(
     pageOrientation: 'portrait' as const,
     pageMargins: [28, 36, 28, 36],
     defaultStyle: { font: 'Roboto', fontSize: FS },
-    content: buildContent(doc),
+    content: buildContent(doc, opts),
   }
   const base64 = await pdfBase64Async(engine, definition)
   const slug = doc.kind.replace(/_/g, '-')
@@ -494,12 +552,13 @@ export async function buildWorkPermissionPdf(
 
 export async function renderWorkPermissionsBundle(
   documents: WorkPermissionDocument[],
+  opts?: BuildWorkPermissionPdfOptions,
 ): Promise<WorkPermissionDocument[]> {
   const pdfMake = await initPdfMake()
   const generatedAtIso = new Date().toISOString()
   return Promise.all(
     documents.map(async (doc) => {
-      const { base64, documentHash } = await buildWorkPermissionPdf(doc, pdfMake)
+      const { base64, documentHash } = await buildWorkPermissionPdf(doc, pdfMake, opts)
       return {
         ...doc,
         pdfBase64: base64,
@@ -512,7 +571,8 @@ export async function renderWorkPermissionsBundle(
 
 export async function renderSingleWorkPermission(
   doc: WorkPermissionDocument,
+  opts?: BuildWorkPermissionPdfOptions,
 ): Promise<WorkPermissionDocument> {
-  const [one] = await renderWorkPermissionsBundle([doc])
+  const [one] = await renderWorkPermissionsBundle([doc], opts)
   return one!
 }

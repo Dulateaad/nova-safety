@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useSession, useJournal } from '../context/SessionContext'
 import { useLanguage } from '../context/LanguageContext'
@@ -14,6 +14,7 @@ import {
 } from '../components/InspectorWorkStopPanel'
 import { ErtGasTestLivePanel } from '../components/ErtGasTestLivePanel'
 import { PermitterPreWorkLivePanel } from '../components/PermitterPreWorkLivePanel'
+import { PerformerGasTestModesPanel } from '../components/PerformerGasTestModesPanel'
 import { PermitEarlyCloseCard } from '../components/PermitEarlyCloseCard'
 import { PermitExtensionCard } from '../components/PermitExtensionCard'
 import { AbrDailyAckPanel } from '../components/AbrDailyAckPanel'
@@ -21,7 +22,11 @@ import { CrewManagementPanel } from '../components/CrewManagementPanel'
 import { ReplacePerformerPanel } from '../components/ReplacePerformerPanel'
 import { WorkPermissionClosurePanel } from '../components/WorkPermissionClosurePanel'
 import { PermitCoordinatorOverview } from '../components/PermitCoordinatorOverview'
+import { PermitPackageBriefCard } from '../components/PermitPackageBrief'
+import type { PackagePermissionBrief } from '../components/PermitPackageBrief'
+import { DocumentKitSummary } from '../components/DocumentKitSummary'
 import { userById } from '../demoUsers'
+import { WORK_PERMISSION_BY_KIND } from '../config/workPermissionsConfig'
 import { PTW_SITE_OPTIONS } from '../config/ptwSites'
 import {
   allowedNextStatuses,
@@ -44,7 +49,6 @@ import {
 } from '../lib/resumePermitPackage'
 import { canUserInitiateWorkStop } from '../lib/inspectorAccess'
 import { notifyWorkStopAlertsRefresh } from '../lib/refreshWorkStopAlerts'
-import { permitRequiresErtApproval } from '../lib/fireWorkApproval'
 import {
   signingRoleOrder,
   mergePermitAfterEgovSign,
@@ -66,6 +70,18 @@ import {
   canUseGodMode,
   godModeSignPermitClient,
 } from '../lib/godModeSign'
+import { buildPackagePdf, viewPackagePdf, preloadPackagePdfEngine } from '../lib/buildPackagePdf'
+import type { PackagePdfPart } from '../lib/buildPackagePdf'
+import { buildPermitPackageBrief } from '../lib/permitPackageBrief'
+import { isPermitPostApproval, isPermitProducer } from '../lib/closeNdprEarly'
+import { syncWorkPermissionsLive } from '../lib/syncWorkPermissionsLive'
+import { permissionNoticesForActivities } from '../lib/workPermissions'
+import { GasTestResultsReadOnlyCard } from '../components/GasTestResultsReadOnlyCard'
+import { gasTestDocFilled, permitHasGasTestDocuments } from '../lib/ertGasTestHints'
+import { openPprAttachmentInBrowser } from '../lib/pprAttachment'
+import { openWorkPermissionPdf } from '../lib/openWorkPermissionPdf'
+import { buildPermitPackagePartPdf } from '../lib/buildPackagePdf'
+import type { WorkPermissionKind } from '../types/workPermissions'
 import {
   fillTemplate,
   formatSpecialWorkLabelsLocalized,
@@ -103,13 +119,44 @@ export function PermitDetailPage() {
   const [workStopOpen, setWorkStopOpen] = useState(false)
   const [workStopBusy, setWorkStopBusy] = useState(false)
   const [closeBusy, setCloseBusy] = useState(false)
+  const [pdfPackageBusy, setPdfPackageBusy] = useState(false)
+  const [viewingPart, setViewingPart] = useState<PackagePdfPart | null>(null)
+  const [viewingPermission, setViewingPermission] = useState<WorkPermissionKind | null>(null)
   const provisionWarning =
     (location.state as { provisionWarning?: string } | null)?.provisionWarning ?? null
 
   const permit = permits.find((p) => p.id === id)
+  const packageBrief = useMemo(
+    () => (permit ? buildPermitPackageBrief(permit, resolveUser) : null),
+    [permit, resolveUser],
+  )
+  const showPackageSection = Boolean(
+    permit && (permit.status !== 'draft' || permit.packagePdf),
+  )
+  const permissionTemplates = useMemo(
+    () => (permit ? permissionNoticesForActivities(permit) : []),
+    [permit],
+  )
+  const permissionBriefs = useMemo((): PackagePermissionBrief[] => {
+    if (!permit?.workPermissions?.documents?.length) return []
+    return permit.workPermissions.documents.map((doc) => ({
+      kind: doc.kind,
+      label: WORK_PERMISSION_BY_KIND[doc.kind].label,
+      hasPdf: Boolean(doc.pdfBase64 || doc.generatedAtIso),
+      requiresGasTests: WORK_PERMISSION_BY_KIND[doc.kind].requiresGasTests,
+      gasTestsFilled: WORK_PERMISSION_BY_KIND[doc.kind].requiresGasTests
+        ? gasTestDocFilled(doc)
+        : undefined,
+    }))
+  }, [permit])
+  const showOperationalBlocks = Boolean(permit && isPermitPostApproval(permit))
 
   useEffect(() => {
-    if (location.hash !== '#ert-gas-tests' && location.hash !== '#performer-pre-work') return
+    void preloadPackagePdfEngine()
+  }, [])
+
+  useEffect(() => {
+    if (location.hash !== '#ert-gas-tests' && location.hash !== '#permitter-pre-work') return
     const timer = window.setTimeout(() => {
       const id = location.hash.slice(1)
       document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -138,6 +185,39 @@ export function PermitDetailPage() {
   }
 
   const p = permit
+
+  async function openFullPackagePdf() {
+    setPdfPackageBusy(true)
+    try {
+      viewPackagePdf(await buildPackagePdf(p, resolveUser, userDirectory))
+    } catch {
+      window.alert(t.modals.pdfPackageFailed)
+    } finally {
+      setPdfPackageBusy(false)
+    }
+  }
+
+  async function openPackagePartPdf(part: PackagePdfPart) {
+    setViewingPart(part)
+    try {
+      viewPackagePdf(await buildPermitPackagePartPdf(part, p, resolveUser, userDirectory))
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : t.modals.pdfPackageFailed)
+    } finally {
+      setViewingPart(null)
+    }
+  }
+
+  async function openPermissionPdf(kind: WorkPermissionKind) {
+    const doc = p.workPermissions?.documents.find((d) => d.kind === kind)
+    if (!doc) return
+    setViewingPermission(kind)
+    try {
+      await openWorkPermissionPdf(doc)
+    } finally {
+      setViewingPermission(null)
+    }
+  }
 
   if (p.status === 'draft' && canUserSubmitPermitPackage(actor) && !isPermitSigningRejected(p)) {
     return (
@@ -216,7 +296,24 @@ export function PermitDetailPage() {
     setCloseBusy(true)
     try {
       await transition(p.id, 'closed')
+      const closedPermit = { ...p, status: 'closed' as const }
+      if (p.workPermissions?.documents?.length) {
+        await syncWorkPermissionsLive({
+          permit: closedPermit,
+          bundle: p.workPermissions,
+          updatePermit,
+          resolveUser,
+          userDirectory,
+          rebuildPackage: true,
+        })
+      }
       if (authMode === 'firebase') await refresh()
+      window.location.hash = 'work-perm-closure'
+      requestAnimationFrame(() => {
+        document
+          .getElementById('work-perm-closure')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
     } finally {
       setCloseBusy(false)
     }
@@ -414,8 +511,29 @@ export function PermitDetailPage() {
         </div>
       ) : null}
 
+      {p.status === 'closed' &&
+      isPermitProducer(p, actor) &&
+      p.workPermissions?.documents?.length ? (
+        <div className="card alert" role="status" style={{ marginBottom: '1rem' }}>
+          <p className="small" style={{ margin: 0 }}>
+            Наряд закрыт. Заполните раздел «Передача рабочего участка / закрытие» и сохраните — данные
+            попадут в PDF и журнал.
+          </p>
+        </div>
+      ) : null}
+
+      {p.status === 'closed' && p.workPermissions?.documents?.length ? (
+        <WorkPermissionClosurePanel
+          permit={p}
+          actor={actor}
+          updatePermit={updatePermit}
+          resolveUser={resolveUser}
+          userDirectory={userDirectory}
+        />
+      ) : null}
+
       {actor.role === 'ert' &&
-      permitRequiresErtApproval(p) &&
+      permitHasGasTestDocuments(p) &&
       p.workPermissions?.documents?.length ? (
         <ErtGasTestLivePanel
           permit={p}
@@ -427,20 +545,73 @@ export function PermitDetailPage() {
         />
       ) : null}
 
-      <PermitEarlyCloseCard
-        permit={p}
-        actor={actor}
-        busy={closeBusy}
-        onClose={() => void closePermitEarly()}
-      />
+      {showPackageSection && packageBrief ? (
+        <section className="card" style={{ marginBottom: '1rem' }}>
+          <h2 style={{ marginTop: 0 }}>{dp.viewFullPdf}</h2>
+          {permissionTemplates.length > 0 ? (
+            <DocumentKitSummary templates={permissionTemplates} />
+          ) : null}
+          <PermitPackageBriefCard
+            brief={packageBrief}
+            permissions={permissionBriefs}
+            showDocLinks
+            onViewPart={(part) => void openPackagePartPdf(part)}
+            onViewPpr={
+              p.ppr?.attachment
+                ? () => {
+                    openPprAttachmentInBrowser(p.ppr!.attachment!)
+                  }
+                : undefined
+            }
+            onViewPermission={(kind) => void openPermissionPdf(kind)}
+            viewingPart={viewingPart}
+            viewingPermission={viewingPermission}
+          />
+          <button
+            type="button"
+            className="btn primary small"
+            style={{ marginTop: '0.75rem' }}
+            disabled={pdfPackageBusy}
+            onClick={() => void openFullPackagePdf()}
+          >
+            {pdfPackageBusy ? c.opening : dp.viewFullPdf}
+          </button>
+        </section>
+      ) : null}
 
-      <PermitExtensionCard permit={p} actor={actor} />
+      {showOperationalBlocks ? (
+        <>
+          <PermitEarlyCloseCard
+            permit={p}
+            actor={actor}
+            busy={closeBusy}
+            onClose={() => void closePermitEarly()}
+          />
 
-      <CrewManagementPanel permit={p} actor={actor} />
+          <PermitExtensionCard permit={p} actor={actor} />
 
-      <ReplacePerformerPanel permit={p} actor={actor} />
+          <CrewManagementPanel permit={p} actor={actor} />
 
-      {actor.role === 'performer' && p.workPermissions?.documents?.length ? (
+          <ReplacePerformerPanel permit={p} actor={actor} />
+        </>
+      ) : null}
+
+      {actor.role === 'performer' &&
+      p.status !== 'closed' &&
+      p.workPermissions?.documents?.length ? (
+        <PerformerGasTestModesPanel
+          permit={p}
+          actor={actor}
+          updatePermit={updatePermit}
+          resolveUser={resolveUser}
+          userDirectory={userDirectory}
+          refresh={refresh}
+        />
+      ) : null}
+
+      {actor.role === 'permitter' &&
+      p.status !== 'closed' &&
+      p.workPermissions?.documents?.length ? (
         <PermitterPreWorkLivePanel
           permit={p}
           actor={actor}
@@ -449,6 +620,12 @@ export function PermitDetailPage() {
           userDirectory={userDirectory}
           refresh={refresh}
         />
+      ) : null}
+
+      {showOperationalBlocks &&
+      actor.role !== 'ert' &&
+      permitHasGasTestDocuments(p) ? (
+        <GasTestResultsReadOnlyCard permit={p} />
       ) : null}
 
       <AbrDailyAckPanel permit={p} actor={actor} />
@@ -475,16 +652,6 @@ export function PermitDetailPage() {
 
       {actor.role === 'coordinator' && p.status !== 'draft' ? (
         <PermitCoordinatorOverview permit={p} resolveUser={resolveUser} />
-      ) : null}
-
-      {p.status === 'closed' && p.workPermissions?.documents?.length ? (
-        <WorkPermissionClosurePanel
-          permit={p}
-          actor={actor}
-          updatePermit={updatePermit}
-          resolveUser={resolveUser}
-          userDirectory={userDirectory}
-        />
       ) : null}
 
       {actor.role === 'executor' && actorInCrew && showApprovalFlow ? (

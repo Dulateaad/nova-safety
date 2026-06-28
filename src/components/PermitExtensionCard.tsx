@@ -1,11 +1,7 @@
 import { useState } from 'react'
 import type { DemoUser, Permit } from '../types/domain'
 import { useSession } from '../context/SessionContext'
-import {
-  buildNdprExtensionPatch,
-  canExtendNdpr,
-  ndprExtensionDeniedReason,
-} from '../lib/ndprExtension'
+import { buildNdprExtensionPatch, canExtendNdpr } from '../lib/ndprExtension'
 import { broadcastPermitNoticeClient } from '../lib/permitNotices'
 import { permitValidityEndDate } from '../lib/permitValidity'
 
@@ -17,11 +13,13 @@ export function PermitExtensionCard(props: {
   const { updatePermit, authMode } = useSession()
   const [busy, setBusy] = useState(false)
   const canExtend = canExtendNdpr(permit, actor)
-  const hint = ndprExtensionDeniedReason(permit, actor)
   const end = permitValidityEndDate(permit)
 
   if (actor.role !== 'performer' && actor.role !== 'coordinator') return null
-  if (['closed', 'archived', 'annulled', 'draft'].includes(permit.status)) return null
+  if (['closed', 'archived', 'annulled', 'draft', 'on_approval'].includes(permit.status)) {
+    return null
+  }
+  if (!canExtend) return null
 
   async function extendNdpr() {
     setBusy(true)
@@ -44,26 +42,17 @@ export function PermitExtensionCard(props: {
           {end.toLocaleString('ru-RU', { dateStyle: 'medium', timeStyle: 'short' })}
         </p>
       ) : null}
-      {canExtend ? (
-        <>
-          <p className="muted small">
-            Кнопка активна за 48 часов до окончания срока. Продление — на 1 сутки по политике
-            матрицы.
-          </p>
-          <button
-            type="button"
-            className="btn primary small"
-            disabled={busy}
-            onClick={() => void extendNdpr()}
-          >
-            {busy ? 'Продление…' : 'Продлить НДПР на 1 сутки'}
-          </button>
-        </>
-      ) : (
-        <p className="muted small" style={{ margin: 0 }}>
-          {hint}
-        </p>
-      )}
+      <p className="muted small">
+        До окончания срока осталось менее 48 часов. Продление — на 1 сутки.
+      </p>
+      <button
+        type="button"
+        className="btn primary small"
+        disabled={busy}
+        onClick={() => void extendNdpr()}
+      >
+        {busy ? 'Продление…' : 'Продлить наряд'}
+      </button>
     </section>
   )
 }

@@ -8,8 +8,8 @@ import {
   canErtEditGasTests,
   ertGasTestBlockedHint,
   gasTestDocFilled,
+  permitHasGasTestDocuments,
 } from '../lib/ertGasTestHints'
-import { permitRequiresErtApproval } from '../lib/fireWorkApproval'
 import { openWorkPermissionPdf } from '../lib/openWorkPermissionPdf'
 import { patchWorkPermissionDocument, syncWorkPermissionsLive } from '../lib/syncWorkPermissionsLive'
 import {
@@ -34,7 +34,6 @@ export function ErtGasTestLivePanel(props: {
   const { t } = useLanguage()
   const wp = t.workPermission
   const gt = t.gasTest
-  const dk = t.docKit
   const c = t.common
   const {
     permit,
@@ -103,7 +102,7 @@ export function ErtGasTestLivePanel(props: {
 
   if (!localBundle?.documents?.length) return null
   if (!isErt) return null
-  if (!permitRequiresErtApproval(permit)) return null
+  if (!canErtEditGasTests(permit) && !permitHasGasTestDocuments(permit)) return null
 
   const visibleDocs = localBundle.documents.filter((doc) => {
     const meta = WORK_PERMISSION_BY_KIND[doc.kind]
@@ -159,7 +158,7 @@ export function ErtGasTestLivePanel(props: {
   return (
     <section className="card work-perm-ert-panel" id="ert-gas-tests">
       <header className="work-perm-ert-panel__head">
-        <h2 style={{ margin: 0 }}>{dk.ertPanelTitle}</h2>
+        <h2 style={{ margin: 0 }}>{gt.panelTitle}</h2>
         <p className="muted small" style={{ margin: '0.25rem 0 0' }}>
           {gt.panelHint}
         </p>

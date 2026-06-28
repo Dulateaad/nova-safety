@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { WORK_PERMISSION_BY_KIND } from '../config/workPermissionsConfig'
+import { GasTestModesFields } from './GasTestModesFields'
 import type {
   WorkPermissionCheckboxGroup,
   WorkPermissionDocument,
@@ -78,6 +79,7 @@ export function WorkPermissionFormEditor(props: {
   const style = WORK_PERMISSION_BY_KIND[doc.kind].style
   const isCs = doc.kind === 'confined_space'
   const isFire = doc.kind === 'open_flame_fire'
+  const showGasModes = WORK_PERMISSION_BY_KIND[doc.kind].requiresGasTests
 
   function patch(partial: Partial<WorkPermissionForm>) {
     onChange({ ...f, ...partial })
@@ -158,7 +160,24 @@ export function WorkPermissionFormEditor(props: {
             onChange={(e) => patch({ equipmentAndDocs: e.target.value })}
           />
         </label>
+
+        {showGasModes ? (
+          <GasTestModesFields form={f} onChange={(partial) => patch(partial)} />
+        ) : null}
       </FormSection>
+
+      {showGasModes ? (
+        <FormSection
+          num="2"
+          title="Результаты отбора проб воздушной среды"
+          hint="Заполняет газотестировщик (ПАС / ERT) после выдачи наряда"
+        >
+          <p className="muted small" style={{ margin: 0 }}>
+            Таблица с датой, временем, НПВ / LEL %, H₂S, O₂, CO и Ф.И.О. проводившего заполняется
+            только газотестировщиком на карточке наряда.
+          </p>
+        </FormSection>
+      ) : null}
 
       {isCs ? (
         <>

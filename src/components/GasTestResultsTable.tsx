@@ -2,12 +2,28 @@ import type { GasTestReading } from '../types/workPermissions'
 import { WORK_PERMISSION_KIND_LABELS, type WorkPermissionKind } from '../types/workPermissions'
 import { useLanguage } from '../context/LanguageContext'
 
-function datetimeLocalValue(atIso: string): string {
+function dateValue(atIso: string): string {
   if (!atIso) return ''
   const d = new Date(atIso)
   if (Number.isNaN(d.getTime())) return ''
   const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function timeValue(atIso: string): string {
+  if (!atIso) return ''
+  const d = new Date(atIso)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function mergeDateTime(datePart: string, timePart: string, prevIso: string): string {
+  if (!datePart) return ''
+  const time = timePart || '00:00'
+  const merged = new Date(`${datePart}T${time}`)
+  if (Number.isNaN(merged.getTime())) return prevIso
+  return merged.toISOString()
 }
 
 export function GasTestResultsTable(props: {
@@ -64,14 +80,13 @@ export function GasTestResultsTable(props: {
             <table className="gas-test-table">
               <thead>
                 <tr>
-                  <th>{gt.colDateIssued}</th>
-                  <th>{gt.colWorkZone}</th>
-                  <th>LEL %</th>
-                  <th>H2S ppm</th>
-                  <th>O2 %</th>
-                  <th>CO ppm</th>
-                  <th>{gt.colInstrument}</th>
-                  <th>{gt.colWorker}</th>
+                  <th>{gt.colDate}</th>
+                  <th>{gt.colTime}</th>
+                  <th>{gt.colLel}</th>
+                  <th>{gt.colH2s}</th>
+                  <th>{gt.colO2}</th>
+                  <th>{gt.colCo}</th>
+                  <th>{gt.colTester}</th>
                 </tr>
               </thead>
               <tbody>
@@ -80,30 +95,38 @@ export function GasTestResultsTable(props: {
                     <td>
                       {canEdit ? (
                         <input
-                          type="datetime-local"
+                          type="date"
                           className="gas-test-table__input"
-                          value={datetimeLocalValue(r.atIso)}
-                          onChange={(e) => {
-                            const v = e.target.value
+                          value={dateValue(r.atIso)}
+                          onChange={(e) =>
                             onChange?.(r.id, {
-                              atIso: v ? new Date(v).toISOString() : '',
+                              atIso: mergeDateTime(e.target.value, timeValue(r.atIso), r.atIso),
                             })
-                          }}
+                          }
                         />
                       ) : (
-                        r.atIso ? new Date(r.atIso).toLocaleString('ru-RU') : '—'
+                        r.atIso ? new Date(r.atIso).toLocaleDateString('ru-RU') : '—'
                       )}
                     </td>
                     <td>
                       {canEdit ? (
                         <input
+                          type="time"
                           className="gas-test-table__input"
-                          value={r.location}
-                          placeholder={gt.colWorkZone}
-                          onChange={(e) => onChange?.(r.id, { location: e.target.value })}
+                          value={timeValue(r.atIso)}
+                          onChange={(e) =>
+                            onChange?.(r.id, {
+                              atIso: mergeDateTime(dateValue(r.atIso), e.target.value, r.atIso),
+                            })
+                          }
                         />
                       ) : (
-                        r.location || '—'
+                        r.atIso
+                          ? new Date(r.atIso).toLocaleTimeString('ru-RU', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : '—'
                       )}
                     </td>
                     {(['lelPercent', 'h2sPpm', 'o2Percent', 'coPpm'] as const).map((field) => (
@@ -121,20 +144,6 @@ export function GasTestResultsTable(props: {
                         )}
                       </td>
                     ))}
-                    <td>
-                      {canEdit ? (
-                        <input
-                          className="gas-test-table__input"
-                          value={r.instrumentNo}
-                          placeholder={gt.colInstrument}
-                          onChange={(e) =>
-                            onChange?.(r.id, { instrumentNo: e.target.value })
-                          }
-                        />
-                      ) : (
-                        r.instrumentNo || '—'
-                      )}
-                    </td>
                     <td className="gas-test-table__tester">{r.testerName || '—'}</td>
                   </tr>
                 ))}
@@ -150,7 +159,7 @@ export function GasTestResultsTable(props: {
       ) : null}
       {ertOnly && !isErt && editable ? (
         <p className="muted xsmall gas-test-table__hint">
-          Редактирование таблицы доступно только пользователю с ролью ПАС (ERT).
+          Редактирование таблицы доступно только газотестировщику (ПАС / ERT).
         </p>
       ) : null}
     </div>

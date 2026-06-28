@@ -22,7 +22,7 @@ export function ReplacePerformerPanel(props: {
   )
 
   if (!canReplace) return null
-  if (['closed', 'archived', 'annulled', 'draft'].includes(permit.status)) return null
+  if (!['issued', 'in_progress', 'suspended'].includes(permit.status)) return null
 
   async function replacePerformer() {
     const uid = nextUid.trim()

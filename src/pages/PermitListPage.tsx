@@ -26,7 +26,7 @@ import {
 } from '../lib/approvalQueue'
 import { pendingAbrDailyAckPermitsForUser } from '../lib/abrDailyAck'
 import { ertGasTestTasksForUser } from '../lib/ertGasTestHints'
-import { performerPreWorkTasksForUser } from '../lib/permitterPreWorkHints'
+import { permitterPreWorkTasksForUser } from '../lib/permitterPreWorkHints'
 import {
   isPermitSigningRejected,
   rejectedPermitsForUser,
@@ -237,8 +237,8 @@ export function PermitListPage() {
     () => ertGasTestTasksForUser(permits, user),
     [permits, user],
   )
-  const performerPreWorkTasks = useMemo(
-    () => performerPreWorkTasksForUser(permits, user),
+  const permitterPreWorkTasks = useMemo(
+    () => permitterPreWorkTasksForUser(permits, user),
     [permits, user],
   )
 
@@ -547,8 +547,8 @@ export function PermitListPage() {
         title={user?.role === 'executor' ? inv.ackTitle : inv.signTitle}
       />
 
-      {user?.role === 'performer' ? (
-        <PermitterPreWorkTasksPanel tasks={performerPreWorkTasks} />
+      {user?.role === 'permitter' ? (
+        <PermitterPreWorkTasksPanel tasks={permitterPreWorkTasks} />
       ) : null}
 
       <WorkStopResolutionNoticesPanel

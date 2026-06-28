@@ -25,9 +25,9 @@ export const WORK_PERMISSION_TEMPLATES: WorkPermissionTemplateMeta[] = [
     shortLabel: 'Газоопасные',
     style: 'orange',
     templateFile: 'Разрешение на газоопасные работы (RU, оранжевый стиль).docx',
-    requiresGasTests: false,
+    requiresGasTests: true,
     gasTestHint:
-      'Таблицу отбора проб заполняет ПАС (роль ERT) при огневых работах на том же наряде.',
+      'Раздел 2 (отбор проб) заполняет газотестировщик (ПАС / ERT). Виды газотеста — в разделе 1.',
     selectionNotice:
       'Для газоопасных работ необходимо заполнить специальное разрешение и провести газоанализ.',
   },

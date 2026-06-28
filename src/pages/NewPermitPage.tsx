@@ -33,6 +33,7 @@ import {
   saveNewPermitDraftToSession,
 } from '../lib/newPermitDraftAutosave'
 import { clearPackageSession, PACKAGE_CLEARED_EVENT } from '../lib/packageSession'
+import { clearResumePermitId } from '../lib/resumePermitPackage'
 import { resolvePerformerUidForPackage } from '../lib/permitAccess'
 import {
   loadPprForm,
@@ -112,6 +113,7 @@ function loadInitialPermitDraft(): PermitDraft {
         ? mergePermitDraftWithPpr(base, ppr)
         : base
     if (fromPpr) {
+      clearResumePermitId()
       draft = { ...draft, executors: [] }
     }
     return draft
@@ -375,7 +377,7 @@ export function NewPermitPage() {
       dateIso: new Date().toISOString().slice(0, 10),
       briefingAcknowledged: false,
     }
-    setDraft((d) => ({ ...d, executors: [...d.executors, row] }))
+    setDraft((d) => ({ ...d, executors: [row, ...d.executors] }))
   }
 
   function patchExecutor(id: string, patch: Partial<(typeof draft.executors)[number]>) {
@@ -728,23 +730,11 @@ export function NewPermitPage() {
 
         <fieldset className="fieldset ndpr-workers-fieldset">
           <legend>{ndprForm.workersLegend}</legend>
-          {!isProducer ? (
-            <div className="ndpr-workers-fieldset__add">
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={addExecutor}
-                disabled={!canAddWorker}
-                title={!canAddWorker ? common.noWorkersAvailable : ''}
-              >
-                {ndprForm.addWorker}
-              </button>
-            </div>
-          ) : (
+          {isProducer ? (
             <p className="small muted" style={{ marginTop: 0 }}>
               {fillTemplate(ndprForm.workersProducerHint, { min: MIN_NDPR_EXECUTORS })}
             </p>
-          )}
+          ) : null}
           {draft.executors.length === 0 ? (
             <p className="small muted" style={{ marginTop: 0 }}>
               {fillTemplate(ndprForm.workersEmptyHint, { min: MIN_NDPR_EXECUTORS })}
@@ -785,19 +775,17 @@ export function NewPermitPage() {
               </button>
             </div>
           ))}
-          {isProducer ? (
-            <div className="ndpr-workers-fieldset__add">
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={addExecutor}
-                disabled={!canAddWorker}
-                title={!canAddWorker ? common.noWorkersAvailable : ''}
-              >
-                {ndprForm.addWorker}
-              </button>
-            </div>
-          ) : null}
+          <div className="ndpr-workers-fieldset__add">
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={addExecutor}
+              disabled={!canAddWorker}
+              title={!canAddWorker ? common.noWorkersAvailable : ''}
+            >
+              {ndprForm.addWorker}
+            </button>
+          </div>
         </fieldset>
 
         <PermitPhotoCapture

@@ -1,4 +1,4 @@
-import { AppLogo } from '../components/AppLogo'
+import { QuestionMarkIcon } from '../components/NavIcon'
 import { useLanguage } from '../context/LanguageContext'
 
 export function HelpPage() {
@@ -14,7 +14,9 @@ export function HelpPage() {
           <p className="help-hero__lead muted">{h.lead}</p>
         </div>
         <div className="help-hero__logo">
-          <AppLogo size="lg" variant="sidebar" className="brand-mark__logo--help" />
+          <span className="help-hero__question" aria-hidden>
+            <QuestionMarkIcon size={52} />
+          </span>
         </div>
       </header>
 
@@ -122,6 +124,7 @@ export function HelpPage() {
           className="btn primary help-cta__btn"
           href={`mailto:${h.supportEmail}?subject=${encodeURIComponent(h.title)}`}
         >
+          <QuestionMarkIcon size={18} />
           {h.ctaButton}
         </a>
       </section>

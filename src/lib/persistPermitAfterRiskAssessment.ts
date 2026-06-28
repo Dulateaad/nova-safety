@@ -10,6 +10,7 @@ import { resolveUserBadgeNo } from './userBadgeNumbers'
 import {
   packageDraftToPermitFields,
   readResumePermitId,
+  clearResumePermitId,
   writeResumePermitId,
 } from './resumePermitPackage'
 import { enrichWorkPermissionsBundle, initializeWorkPermissionsBundle } from './workPermissions'
@@ -84,8 +85,17 @@ export async function persistPermitAfterRiskAssessment(
   let status: PermitStatus = existingStatus ?? 'draft'
 
   if (resumePermitId) {
-    await updatePermit(resumePermitId, packageDraftToPermitFields(packageDraft))
-    permitId = resumePermitId
+    try {
+      await updatePermit(resumePermitId, packageDraftToPermitFields(packageDraft))
+      permitId = resumePermitId
+    } catch (e) {
+      if (!(e instanceof Error && e.message === 'Permit not found')) throw e
+      clearResumePermitId()
+      const created = await createPermit(packageDraft)
+      permitId = created.id
+      status = created.status
+      writeResumePermitId(permitId)
+    }
   } else {
     const created = await createPermit(packageDraft)
     permitId = created.id

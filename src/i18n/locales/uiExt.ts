@@ -340,6 +340,13 @@ export type UiExtension = {
     colWorkZone: string
     colInstrument: string
     colWorker: string
+    colDate: string
+    colTime: string
+    colLel: string
+    colH2s: string
+    colO2: string
+    colCo: string
+    colTester: string
     updatedLabel: string
     ertFillsNote: string
   }
@@ -1045,13 +1052,20 @@ export const uiExtRu: UiExtension = {
     colWorkZone: 'Рабочая зона',
     colInstrument: 'Рег. №',
     colWorker: 'Работник',
+    colDate: 'Дата',
+    colTime: 'Время',
+    colLel: 'НПВ / LEL %',
+    colH2s: 'H2S, ppm',
+    colO2: 'O2, %',
+    colCo: 'CO, ppm',
+    colTester: 'Ф.И.О. проводившего',
     updatedLabel: 'Обновлён',
     ertFillsNote: ' · заполняет ПАС (ERT)',
   },
   preWorkCheck: {
-    panelTitle: 'Раздел 3 — проверки на рабочем месте',
+    panelTitle: '3. Проверки на рабочем месте',
     panelHint:
-      'Заполните чек-лист проверок (раздел 3 в PDF разрешения). После сохранения данные попадут в PDF и пакет согласования.',
+      'Заполните чек-лист проверок — колонка «Имеется» в PDF (раздел 3). Заполняет допускающий.',
     stepFill: 'Отметьте выполненные проверки и при необходимости укажите пояснения.',
     stepSave: 'Нажмите «Сохранить проверки» — PDF разрешения обновится автоматически.',
     stepPdf: 'Откройте PDF разрешения для проверки.',
@@ -1068,8 +1082,8 @@ export const uiExtRu: UiExtension = {
     fillChecks:
       'Заполните раздел 3 (проверки на рабочем месте) в разрешениях. Осталось без проверок: {empty}.',
     checksFilled: 'Раздел 3 заполнен.',
-    tasksTitle: 'Задание: проверки на рабочем месте (производитель)',
-    tasksHint: 'Наряды с незаполненным разделом 3 в разрешениях — заполните и сохраните в PDF.',
+    tasksTitle: 'Задание: проверки на рабочем месте (допускающий)',
+    tasksHint: 'Наряды с незаполненным разделом 3 в разрешениях — отметьте колонку «Имеется» и сохраните в PDF.',
     openChecks: 'Открыть проверки',
     savedConfirm: 'Раздел 3 сохранён. Проверки на рабочем месте заполнены.',
     editAgain: 'Изменить проверки',
@@ -1847,6 +1861,13 @@ export const uiExtEn: UiExtension = {
     colWorkZone: 'Work zone',
     colInstrument: 'Reg. No.',
     colWorker: 'Worker',
+    colDate: 'Date',
+    colTime: 'Time',
+    colLel: 'LEL %',
+    colH2s: 'H2S, ppm',
+    colO2: 'O2, %',
+    colCo: 'CO, ppm',
+    colTester: 'Tester name',
     updatedLabel: 'Updated',
     ertFillsNote: ' · filled by ERT',
   },

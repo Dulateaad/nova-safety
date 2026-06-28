@@ -85,22 +85,24 @@ export function LoadingProgress(props: {
         </div>
       )}
       <div className="loading-progress__label">{label}</div>
-      <div className="loading-progress__track" aria-hidden="true">
-        <div
-          className={[
-            'loading-progress__bar',
-            runIndeterminate ? 'loading-progress__bar--indeterminate' : '',
-          ]
-            .filter(Boolean)
-            .join(' ')}
-          style={width !== undefined ? { width: `${width}%` } : undefined}
-        />
-      </div>
-      {!runIndeterminate && width !== undefined && (
-        <div className="loading-progress__pct muted xsmall" aria-hidden="true">
-          {Math.round(width)}%
+      <div className="loading-progress__meter">
+        <div className="loading-progress__track" aria-hidden="true">
+          <div
+            className={[
+              'loading-progress__bar',
+              runIndeterminate ? 'loading-progress__bar--indeterminate' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            style={width !== undefined ? { width: `${width}%` } : undefined}
+          />
         </div>
-      )}
+        {!runIndeterminate && width !== undefined && (
+          <div className="loading-progress__pct muted xsmall" aria-hidden="true">
+            {Math.round(width)}%
+          </div>
+        )}
+      </div>
       {withTips && tips.length > 0 && (
         <p className="loading-progress__tip" key={tipIndex}>
           {tips[tipIndex]}

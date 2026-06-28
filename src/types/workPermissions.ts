@@ -82,6 +82,10 @@ export interface WorkPermissionForm {
   emergencyContacts: WorkPermissionEmergencyContact[]
   confinedSpaceNotes: string
   additionalNotes: string
+  /** Раздел 1 — виды газотеста (заполняет производитель работ). */
+  gasTestPrimary: boolean
+  gasTestPrimaryInterval: string
+  gasTestContinuous: boolean
   /** Сводный текст разделов 3–5 (ИИ / ручной) */
   bodyText: string
   /** Номер разрешения (шапка бланка). */
@@ -138,6 +142,9 @@ export function emptyWorkPermissionForm(kind: WorkPermissionKind): WorkPermissio
     emergencyContacts: seeded.emergencyContacts,
     confinedSpaceNotes: '',
     additionalNotes: '',
+    gasTestPrimary: true,
+    gasTestPrimaryInterval: 'каждые 2 часа',
+    gasTestContinuous: false,
     bodyText: '',
   }
 }

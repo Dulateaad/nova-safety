@@ -13,9 +13,8 @@ import { prefillAsorTeamFromNd } from '../lib/pprAsorPrefill'
 import { restoreNewPermitDraftFromSession } from '../lib/newPermitDraftAutosave'
 import { clearPackageSession, PACKAGE_CLEARED_EVENT } from '../lib/packageSession'
 import {
-  readResumePermitId,
-  packageDraftToPermitFields,
-} from '../lib/resumePermitPackage'
+  ensurePermitForPackageSubmit,
+} from '../lib/submitNdprPackageFlow'
 import { setRiskGatePassed } from '../lib/riskGate'
 import {
   initializeWorkPermissionsBundle,
@@ -530,15 +529,12 @@ export function RiskAssessmentPage() {
 
     setBusy(true)
     try {
-      const resumePermitId = readResumePermitId()
       setSubmitStage('Сохранение наряда в базе…')
-      let p
-      if (resumePermitId) {
-        await updatePermit(resumePermitId, packageDraftToPermitFields(packageDraft))
-        p = { id: resumePermitId, ...packageDraft } as import('../types/domain').Permit
-      } else {
-        p = await createPermit(packageDraft)
-      }
+      const p = await ensurePermitForPackageSubmit({
+        packageDraft,
+        createPermit,
+        updatePermit,
+      })
       setSubmitStage('Формирование PDF-пакета для согласования…')
       const { buildSigningPackagePdf } = await import('../lib/buildSigningPackagePdf')
       const packagePdf = await buildSigningPackagePdf(p, resolveUser, participantDirectory)

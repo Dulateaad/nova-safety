@@ -9,7 +9,7 @@ import { broadcastPermitNoticeClient } from '../lib/permitNotices'
 import { mergeAbrPeopleFromNd } from '../lib/prefillAbrFromPackage'
 
 const EDIT_ROLES = new Set<DemoUser['role']>(['performer', 'coordinator', 'permitter'])
-const ACTIVE = new Set<Permit['status']>(['issued', 'in_progress', 'suspended', 'on_approval'])
+const ACTIVE = new Set<Permit['status']>(['issued', 'in_progress', 'suspended'])
 
 function newExecutorRow(userUid: string): WorkExecutor {
   return {
@@ -50,7 +50,7 @@ export function CrewManagementPanel(props: {
       setError('Нет свободных работников в справочнике.')
       return
     }
-    setExecutors((list) => [...list, newExecutorRow(pick)])
+    setExecutors((list) => [newExecutorRow(pick), ...list])
     setError(null)
   }
 
@@ -108,11 +108,6 @@ export function CrewManagementPanel(props: {
           {error}
         </div>
       ) : null}
-      <div className="btn-row" style={{ marginBottom: '0.75rem' }}>
-        <button type="button" className="btn ghost small" onClick={addExecutor} disabled={!canAdd || busy}>
-          + Добавить работника
-        </button>
-      </div>
       {executors.map((ex) => (
         <div
           key={ex.id}
@@ -145,6 +140,11 @@ export function CrewManagementPanel(props: {
           </button>
         </div>
       ))}
+      <div className="btn-row ndpr-workers-fieldset__add">
+        <button type="button" className="btn ghost small" onClick={addExecutor} disabled={!canAdd || busy}>
+          + Добавить работника
+        </button>
+      </div>
       <button type="button" className="btn primary small" disabled={busy} onClick={() => void saveCrew()}>
         {busy ? 'Сохранение…' : 'Сохранить состав бригады'}
       </button>

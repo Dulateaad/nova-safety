@@ -91,9 +91,11 @@ export function signatureSectionNumbers(kind: WorkPermissionKind): {
   permitter: number
   extension: number
   closure: number
+  /** Газ / огонь: разделы 1–5 без отдельных блоков подписей (как в DOCX). */
+  useCompactLayout: boolean
 } {
   if (kind === 'confined_space') {
-    return { performer: 4, issuer: 5, permitter: 6, extension: 7, closure: 8 }
+    return { performer: 4, issuer: 5, permitter: 6, extension: 7, closure: 8, useCompactLayout: false }
   }
-  return { performer: 4, issuer: 5, permitter: 6, extension: 7, closure: 8 }
+  return { performer: 0, issuer: 0, permitter: 0, extension: 4, closure: 5, useCompactLayout: true }
 }

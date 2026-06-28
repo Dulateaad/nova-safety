@@ -9,6 +9,9 @@ type NavIconName =
   | 'help'
   | 'admin'
 
+const QUESTION_MARK_PATH =
+  'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z'
+
 const paths: Record<NavIconName, string> = {
   journal:
     'M6 4h12v16H6V4zm2 2v12h8V6H8zm2 2h4v2h-4V8zm0 3h4v2h-4v-2z',
@@ -22,10 +25,25 @@ const paths: Record<NavIconName, string> = {
     'M7 3h10a2 2 0 012 2v14l-4-2-4 2-4-2-4 2V5a2 2 0 012-2zm0 2v11.5l2-1 2 1 2-1 2 1 2-1V5H7zm2 3h6v2H9V8zm0 3h4v2H9v-2z',
   certificates:
     'M6 4h12v2H6V4zm0 4h8v2H6V8zm0 4h10v2H6v-2zm0 4h6v2H6v-2z',
-  help:
-    'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 15h1.5v1.5H12V17zm0-11.5a3.25 3.25 0 0 1 3.18 3.9c-.28 1.4-1.55 1.85-2.05 2.35-.35.35-.63.75-.63 1.35V14h-1.5v-.4c0-1 .55-1.55 1.05-2.05.55-.55 1.2-.95 1.45-1.85A1.75 1.75 0 0 0 12 5.5z',
+  help: QUESTION_MARK_PATH,
   admin:
     'M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 2.18 7 3.11v5.71c0 4.52-3.08 8.79-7 9.93-3.92-1.14-7-5.41-7-9.93V6.29l7-3.11zM11 7h2v6h-2V7zm0 8h2v2h-2v-2z',
+}
+
+export function QuestionMarkIcon(props: { size?: number; className?: string }) {
+  const { size = 22, className } = props
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden
+      fill="currentColor"
+    >
+      <path d={QUESTION_MARK_PATH} />
+    </svg>
+  )
 }
 
 export function NavIcon({ name }: { name: NavIconName }) {

@@ -22,16 +22,19 @@ import { LoadingProgress } from './LoadingProgress'
 function ClosureChecksEditor(props: {
   group: WorkPermissionCheckboxGroup
   onChange: (group: WorkPermissionCheckboxGroup) => void
+  disabled?: boolean
 }) {
-  const { group, onChange } = props
+  const { group, onChange, disabled = false } = props
   return (
-    <ul className="work-perm-checks__list">
+    <fieldset className="work-perm-checks" disabled={disabled}>
+      <ul className="work-perm-checks__list">
       {group.items.map((item, idx) => (
         <li key={item.id} className="work-perm-checks__item">
           <label className="check work-perm-checks__check">
             <input
               type="checkbox"
               checked={item.checked}
+              disabled={disabled}
               onChange={(e) => {
                 const items = [...group.items]
                 items[idx] = { ...item, checked: e.target.checked }
@@ -42,7 +45,8 @@ function ClosureChecksEditor(props: {
           </label>
         </li>
       ))}
-    </ul>
+      </ul>
+    </fieldset>
   )
 }
 
@@ -118,11 +122,12 @@ export function WorkPermissionClosurePanel(props: {
   }
 
   return (
-    <section className="card work-perm-closure-panel" id="work-perm-closure">
+    <section className="card work-perm-closure-panel" id="work-perm-closure" style={{ marginBottom: '1rem' }}>
       <header>
-        <h2 style={{ margin: 0 }}>{wp.saveClosure}</h2>
+        <h2 style={{ margin: 0 }}>Передача рабочего участка / закрытие разрешения</h2>
         <p className="muted small" style={{ margin: '0.25rem 0 0' }}>
-          {t.confirm.closeEarly}
+          Отметьте пункты и сохраните — раздел «Передача рабочего участка / закрытие» попадёт в PDF
+          разрешения и журнал НДПР.
         </p>
         {!canEdit && denied ? <p className="muted small">{denied}</p> : null}
       </header>
@@ -136,6 +141,7 @@ export function WorkPermissionClosurePanel(props: {
           <ClosureChecksEditor
             group={doc.form.closureChecks ?? defaultClosureChecks()}
             onChange={(g) => onClosureChange(doc.kind, g)}
+            disabled={!canEdit}
           />
         </div>
       ))}
