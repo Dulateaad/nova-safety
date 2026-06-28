@@ -17,10 +17,10 @@ export const DEMO_USERS: DemoUser[] = [
   },
   {
     id: 'u-permitter',
-    displayName: 'Петров — допускающий',
-    email: 'permitter@demo.local',
+    displayName: 'Ибат Габитжан',
+    email: 'permitter@nova.local',
     role: 'permitter',
-    badgeNo: '003',
+    badgeNo: '002',
   },
   {
     id: 'u-performer',
@@ -53,9 +53,16 @@ export const DEMO_USERS: DemoUser[] = [
   {
     id: 'u-performer-5',
     displayName: 'Уахитов Темирлан — Старший инженер по ОТ, ТБ и ООС',
-    email: 'temirlan@nova.local',
+    email: 'temirlan-safety@nova.local',
     role: 'performer',
     badgeNo: '008',
+  },
+  {
+    id: 'u-performer-abylay',
+    displayName: 'Абылай Аманжол',
+    email: 'abylay2@nova.local',
+    role: 'performer',
+    badgeNo: '020',
   },
   {
     id: 'u-performer-6',
@@ -63,6 +70,20 @@ export const DEMO_USERS: DemoUser[] = [
     email: 'abylay@nova.local',
     role: 'performer',
     badgeNo: '009',
+  },
+  {
+    id: 'u-issuer-temirlan',
+    displayName: 'Темирлан Усеинов',
+    email: 'temirlan@nova.local',
+    role: 'issuer',
+    badgeNo: '008',
+  },
+  {
+    id: 'u-ert',
+    displayName: 'ПАС — Пожарно-аварийная служба',
+    email: 'ert@nova.local',
+    role: 'ert',
+    badgeNo: '022',
   },
   {
     id: 'u-executor',
@@ -129,10 +150,10 @@ export const DEMO_USERS: DemoUser[] = [
   },
   {
     id: 'u-lead',
-    displayName: 'Утверждающий НД',
-    email: 'lead@demo.local',
+    displayName: 'Али Зайнуллин',
+    email: 'lead@nova.local',
     role: 'leadExpert',
-    badgeNo: '019',
+    badgeNo: '004',
   },
 ]
 

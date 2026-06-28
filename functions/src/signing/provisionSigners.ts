@@ -535,6 +535,8 @@ export async function provisionPermitSigners(
       : current === role
         ? 'active'
         : 'pending'
+    const existingSnap = await db.collection('signingInvites').doc(inviteId).get()
+    const message = approvalInviteMessage(status, stepLabel)
     await db
       .collection('signingInvites')
       .doc(inviteId)
@@ -550,12 +552,22 @@ export async function provisionPermitSigners(
           inviteType: 'approval',
           stepLabel,
           status,
-          message: approvalInviteMessage(status, stepLabel),
-          createdAtIso: new Date().toISOString(),
+          message,
+          createdAtIso: existingSnap.exists
+            ? String(existingSnap.data()?.createdAtIso ?? new Date().toISOString())
+            : new Date().toISOString(),
           updatedAtIso: new Date().toISOString(),
         },
         { merge: true },
       )
+    if (!signed && !existingSnap.exists) {
+      await notifyUser(
+        db,
+        resolved.uid,
+        { title: stepLabel, body: message, permitId },
+        { inviteType: 'approval' },
+      )
+    }
     signers.push({
       role,
       uid: resolved.uid,
@@ -621,7 +633,7 @@ export async function syncSigningInvitesAfterSign(
         : SIGNER_ACCOUNT_TEMPLATES[next].displayName
   }
   const stepLabel = approvalStepLabel(next, displayName, permit)
-  const message = `Требуется ваша подпись: ${stepLabel}`
+  const message = APPROVAL_PACKAGE_MESSAGE
   await db
     .collection('signingInvites')
     .doc(`${permitId}_${next}`)

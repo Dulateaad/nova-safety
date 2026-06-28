@@ -31,6 +31,7 @@ export function CrewManagementPanel(props: {
   const [error, setError] = useState<string | null>(null)
 
   const canEdit = EDIT_ROLES.has(actor.role) && ACTIVE.has(permit.status)
+  const isProducer = actor.role === 'performer'
   const canAdd = useMemo(() => {
     const used = new Set(executors.map((e) => e.userUid).filter(Boolean))
     return firstUnusedWorkerUid(userDirectory, used) !== null
@@ -96,10 +97,12 @@ export function CrewManagementPanel(props: {
   return (
     <section className="card" style={{ marginBottom: '1rem' }}>
       <h2 style={{ marginTop: 0 }}>Состав бригады</h2>
-      <p className="muted small">
-        Добавление и удаление работников. При сохранении изменений участникам отправляются
-        push- и email-уведомления.
-      </p>
+      {!isProducer ? (
+        <p className="muted small">
+          Добавление и удаление работников. При сохранении изменений участникам отправляются
+          push- и email-уведомления.
+        </p>
+      ) : null}
       {error ? (
         <div className="alert error" role="alert">
           {error}
@@ -111,8 +114,12 @@ export function CrewManagementPanel(props: {
         </button>
       </div>
       {executors.map((ex) => (
-        <div key={ex.id} className="card" style={{ marginBottom: '0.65rem', padding: '0.75rem' }}>
-          <label className="small">
+        <div
+          key={ex.id}
+          className={isProducer ? 'ndpr-worker-row' : 'card'}
+          style={isProducer ? undefined : { marginBottom: '0.65rem', padding: '0.75rem' }}
+        >
+          <label className={isProducer ? undefined : 'small'}>
             Работник
             <select
               value={ex.userUid}
@@ -129,8 +136,8 @@ export function CrewManagementPanel(props: {
           </label>
           <button
             type="button"
-            className="btn ghost small"
-            style={{ marginTop: '0.5rem' }}
+            className={`btn ghost small${isProducer ? ' ndpr-worker-row__remove' : ''}`}
+            style={isProducer ? undefined : { marginTop: '0.5rem' }}
             disabled={busy}
             onClick={() => removeExecutor(ex.id)}
           >

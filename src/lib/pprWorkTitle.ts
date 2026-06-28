@@ -1,5 +1,6 @@
 import type { PprAttachment } from '../types/ppr'
 import { extractTextFromPprAttachment } from './pprDocText'
+import { isPdfAttachment } from './pprGeminiPdfExtract'
 
 function normalizeTitleText(raw: string): string {
   return raw.normalize('NFC').replace(/\s+/g, ' ').trim()
@@ -354,6 +355,12 @@ export async function resolvePprWorkTitleFromAttachment(
   attachment: PprAttachment,
   extracted?: string,
 ): Promise<string> {
+  if (isPdfAttachment(attachment)) {
+    return resolvePprWorkTitle({
+      extracted,
+      fileName: attachment.fileName,
+    })
+  }
   const docText = await extractTextFromPprAttachment(attachment)
   return resolvePprWorkTitle({
     header: extractWorkTitleFromDocHeader(docText),

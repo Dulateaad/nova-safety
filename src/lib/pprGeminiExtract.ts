@@ -1,17 +1,14 @@
-import { resolveAiProvider } from '../config/aiProvider'
 import {
   buildControlMeasuresUserPrompt,
   PPR_CONTROL_MEASURES_SYSTEM_PROMPT,
 } from '../config/pprControlMeasuresPrompt'
 import type { GeminiPdfDocument, PprControlMeasuresItem } from '../types/ppr'
 import { aiGenerateTextForExtraction, isAiClientReady } from './aiClient'
-import { extractControlMeasuresViaGeminiFunction } from './pprGeminiFunctions'
 import {
   normalizeControlMeasuresItems,
   normalizePdfDocumentFromPayload,
   parseControlMeasuresJson,
 } from './pprControlMeasuresParse'
-import { firebaseConfigured } from './firebase'
 import type { PprNdprExtract } from './pprNdprExtract'
 import { normalizeNdprFromPayload } from './pprNdprExtract'
 
@@ -43,33 +40,19 @@ async function extractWithAiClient(
   }
 }
 
-/** Claude в браузере; Cloud Function (Gemini) — только при VITE_AI_PROVIDER=gemini. */
+/** Claude анализирует текст .docx ППР. */
 export async function tryExtractWithGemini(
   docText: string,
   fileName: string,
 ): Promise<GeminiExtractResult | null> {
-  if (isAiClientReady()) {
-    try {
-      return await extractWithAiClient(docText, fileName)
-    } catch {
-      /* cloud function below */
-    }
+  if (!isAiClientReady()) return null
+  try {
+    return await extractWithAiClient(docText, fileName)
+  } catch {
+    return null
   }
-  if (resolveAiProvider() === 'gemini' && firebaseConfigured) {
-    try {
-      const remote = await extractControlMeasuresViaGeminiFunction(docText, fileName)
-      return {
-        workTitle: remote.workTitle,
-        items: remote.items,
-        ndprExtract: remote.ndprExtract,
-      }
-    } catch {
-      /* rules below */
-    }
-  }
-  return null
 }
 
 export function isGeminiExtractionAvailable(): boolean {
-  return isAiClientReady() || (resolveAiProvider() === 'gemini' && firebaseConfigured)
+  return isAiClientReady()
 }

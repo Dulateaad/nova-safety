@@ -24,7 +24,10 @@ import {
   refreshCrewAckInvites,
 } from './signing/provisionSigners'
 import { renumberAllPermits } from './admin/renumberPermits'
-import { cleanupOrphanSigningInvites } from './admin/cleanupSigningInvites'
+import {
+  cleanupOrphanPermitRelatedData,
+  deletePermitRelatedDataForPermitsAdmin,
+} from './admin/cleanupPermitRelatedData'
 import { applyGodModeSign } from './admin/godModeSign'
 import { broadcastPermitNotice } from './notifications/permitNotices'
 import { notifyUser } from './notifications/notifyUser'
@@ -123,12 +126,14 @@ export const pushOnPermitNotice = onDocumentCreated(
   },
 )
 
-/** Push + email при приглашении на подпись (crew_ack — только push). */
+/** Push + email при приглашении на подпись (approval — в provisionSigners; crew_ack — в provisionCrewInvites). */
 export const pushOnSigningInvite = onDocumentCreated(
   { ...PUSH_TRIGGER_OPTIONS, document: 'signingInvites/{id}' },
   async (event) => {
     const n = event.data?.data()
     if (!n) return
+    const inviteType = String(n.inviteType ?? 'approval')
+    if (inviteType === 'approval' || inviteType === 'crew_ack') return
     const status = String(n.status ?? '')
     if (status !== 'active') return
     const title = String(n.stepLabel ?? 'Требуется ваша подпись')
@@ -140,7 +145,7 @@ export const pushOnSigningInvite = onDocumentCreated(
         body: String(n.message ?? title),
         permitId: String(n.permitId ?? ''),
       },
-      { inviteType: String(n.inviteType ?? 'approval') },
+      { inviteType },
     )
   },
 )
@@ -563,11 +568,75 @@ export const cleanupOrphanSigningInvitesFn = onCall(CALLABLE_OPTIONS, async (req
   }
 
   try {
-    return await cleanupOrphanSigningInvites(db)
+    const result = await cleanupOrphanPermitRelatedData(db)
+    return {
+      deleted:
+        result.signingInvites + result.permitNotices + result.workStopAlerts,
+      scanned:
+        result.scannedSigningInvites +
+        result.scannedPermitNotices +
+        result.scannedWorkStopAlerts,
+      ...result,
+    }
   } catch (e) {
     throw new HttpsError(
       'internal',
       e instanceof Error ? e.message : 'Не удалось очистить уведомления',
+    )
+  }
+})
+
+/** Удалить задания и уведомления ролей по списку нарядов (координатор). */
+export const cleanupPermitRelatedDataFn = onCall(CALLABLE_OPTIONS, async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', 'Требуется вход')
+  }
+  const callerSnap = await db.collection('users').doc(request.auth.uid).get()
+  if (!callerSnap.exists) {
+    throw new HttpsError('permission-denied', 'Нет профиля пользователя')
+  }
+  const callerRole = String(callerSnap.data()?.role ?? '')
+  if (callerRole !== 'coordinator') {
+    throw new HttpsError('permission-denied', 'Только координатор может удалять задания ролей')
+  }
+
+  const permitIds = Array.isArray(request.data?.permitIds)
+    ? request.data.permitIds.map((id: unknown) => String(id ?? '').trim()).filter(Boolean)
+    : []
+  if (permitIds.length === 0) {
+    throw new HttpsError('invalid-argument', 'Укажите permitIds')
+  }
+
+  try {
+    return await deletePermitRelatedDataForPermitsAdmin(db, permitIds)
+  } catch (e) {
+    throw new HttpsError(
+      'internal',
+      e instanceof Error ? e.message : 'Не удалось удалить задания ролей',
+    )
+  }
+})
+
+/** Удалить «осиротевшие» задания и уведомления для удалённых нарядов (координатор). */
+export const cleanupOrphanPermitRelatedDataFn = onCall(CALLABLE_OPTIONS, async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', 'Требуется вход')
+  }
+  const callerSnap = await db.collection('users').doc(request.auth.uid).get()
+  if (!callerSnap.exists) {
+    throw new HttpsError('permission-denied', 'Нет профиля пользователя')
+  }
+  const callerRole = String(callerSnap.data()?.role ?? '')
+  if (callerRole !== 'coordinator') {
+    throw new HttpsError('permission-denied', 'Только координатор может очистить задания ролей')
+  }
+
+  try {
+    return await cleanupOrphanPermitRelatedData(db)
+  } catch (e) {
+    throw new HttpsError(
+      'internal',
+      e instanceof Error ? e.message : 'Не удалось очистить задания ролей',
     )
   }
 })
@@ -594,7 +663,10 @@ export const setSigningSettingsFn = onCall(CALLABLE_OPTIONS, async (request) => 
     throw new HttpsError('permission-denied', 'Только координатор может менять настройки подписи')
   }
 
-  const verifyEgovFio = request.data?.verifyEgovFio !== false
+  if (typeof request.data?.verifyEgovFio !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'Укажите verifyEgovFio: true | false')
+  }
+  const verifyEgovFio = request.data.verifyEgovFio
   return setSigningAppSettings(db, { verifyEgovFio }, request.auth.uid)
 })
 

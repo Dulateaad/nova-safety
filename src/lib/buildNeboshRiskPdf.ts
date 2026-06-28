@@ -28,13 +28,6 @@ import { initPdfMake, pdfBase64Async } from './pdfMakeEngine'
 import { inferNeboshScores } from './inferNeboshScores'
 import { buildPermitCrewRows } from './permitCrewRows'
 import { crewAckDatePdfText, crewAckSignaturePdfText } from './crewAckPdfText'
-import { SIGNING_ROLE_ORDER } from './approvalSequence'
-import {
-  buildPdfSignaturePendingCell,
-  buildPdfSignatureStatusCell,
-  isPdfEgovSigned,
-  PDF_EGOV_SIG_COLORS,
-} from './pdfEgovSignatureCell'
 
 type PdfCell = Record<string, unknown>
 
@@ -130,26 +123,6 @@ function hdr(
   fontSize = FS,
 ): PdfCell {
   return { text, fillColor: fill, color, bold: true, fontSize, alignment: align }
-}
-
-function contentCell(
-  content: string | Record<string, unknown>,
-  fill: string = NEBOSH_PDF_COLORS.white,
-  opts?: {
-    bold?: boolean
-    align?: 'left' | 'center' | 'right'
-    color?: string
-    fontSize?: number
-  },
-): PdfCell {
-  if (typeof content === 'string') return cell(content, fill, opts)
-  const c: PdfCell = { ...content }
-  if (c.fillColor == null) c.fillColor = fill
-  if (opts?.align && c.alignment == null) c.alignment = opts.align
-  if (opts?.fontSize && c.fontSize == null) c.fontSize = opts.fontSize
-  if (opts?.bold && c.bold == null) c.bold = opts.bold
-  if (opts?.color && c.color == null) c.color = opts.color
-  return c
 }
 
 function cell(
@@ -548,48 +521,6 @@ function stripedTable(
   }
 }
 
-function signatureTable(
-  rows: { role: string; fullName: string; dateIso: string }[],
-  permit?: Permit,
-): Record<string, unknown> {
-  const body: PdfCell[][] = [
-    [
-      hdr('Должность'),
-      hdr('ФИО'),
-      hdr('Подпись / ЭЦП'),
-      hdr('Дата'),
-    ],
-    ...rows.map((r, i) => {
-      const role = SIGNING_ROLE_ORDER[i]
-      const approvalRow = {
-        roleKey: 'filled_work_permitter' as const,
-        roleLabelRu: r.role,
-        fullNamePrinted: r.fullName,
-        badgeNo: '',
-        dateIso: r.dateIso,
-        acknowledged: false,
-      }
-      const signed = role && permit ? isPdfEgovSigned(permit, role) : false
-      const rowFill = signed ? PDF_EGOV_SIG_COLORS.signedRowTint : NEBOSH_PDF_COLORS.white
-      const sigCell =
-        role && permit
-          ? buildPdfSignatureStatusCell(permit, role, approvalRow)
-          : buildPdfSignaturePendingCell()
-      return [
-        cell(r.role, NEBOSH_PDF_COLORS.altRow, { bold: true }),
-        cell(r.fullName, rowFill),
-        contentCell(sigCell, NEBOSH_PDF_COLORS.white),
-        cell(signed ? '—' : r.dateIso, rowFill, { align: 'center' }),
-      ]
-    }),
-  ]
-  return {
-    table: { headerRows: 1, widths: ['26%', '24%', '30%', '20%'], body },
-    layout: TABLE_LAYOUT,
-    margin: [0, 6, 0, 10],
-  }
-}
-
 export async function buildNeboshRiskPdf(
   rawForm: AsorForm,
   title: string,
@@ -683,16 +614,6 @@ export async function buildNeboshRiskPdf(
     )
   }
 
-  const sigRows =
-    nb.signatureRows.length > 0
-      ? nb.signatureRows
-      : [
-          { role: 'Менеджер по ТБ / Составил', fullName: nb.preparedBy, dateIso: nb.assessmentDateIso },
-          { role: 'Руководитель проекта / Утвердил', fullName: nb.approvedBy, dateIso: nb.assessmentDateIso },
-          { role: 'Представитель Заказчика (УОГ)', fullName: '', dateIso: '' },
-          { role: 'Ответственный за ОС', fullName: '', dateIso: '' },
-        ]
-
   const permit = opts?.permit
   const resolveUser = opts?.resolveUser
   const crewFromPermit =
@@ -771,14 +692,6 @@ export async function buildNeboshRiskPdf(
       })
     }
   }
-
-  content.push({
-    text: '6. ПОДПИСИ И УТВЕРЖДЕНИЕ',
-    bold: true,
-    fontSize: 10,
-    margin: [0, 4, 0, 4],
-  })
-  content.push(signatureTable(sigRows, opts?.permit))
 
   const disclaimer =
     nb.disclaimerNote.trim() ||

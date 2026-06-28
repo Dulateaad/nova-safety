@@ -71,7 +71,7 @@ async function buildNdprSectionBase64(
               text: 'Подписание ЭЦП',
               bold: true,
               fontSize: 10,
-              fillColor: '#0b2147',
+              fillColor: '#1F4E79',
               color: '#ffffff',
               margin: [6, 4, 6, 4],
             },

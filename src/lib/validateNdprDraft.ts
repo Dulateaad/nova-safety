@@ -3,6 +3,7 @@ import type { DemoUser, PermitDraft } from '../types/domain'
 import { resolvePerformerUidForPackage } from './permitAccess'
 import { loadPprForm } from './pprAutosave'
 import { resolveExecutorRows } from './resolveWorkerUid'
+import { permitRequiresErtApproval } from './fireWorkApproval'
 
 /** Минимальное число работников в составе бригады (F03). */
 export const MIN_NDPR_EXECUTORS = 2
@@ -75,6 +76,9 @@ export function prepareNdprDraftForValidation(
     permitterUid: pickText(sanitized.permitterUid, defaults.permitterUid),
     issuerUid: pickText(sanitized.issuerUid, defaults.issuerUid),
     leadExpertUid: pickText(sanitized.leadExpertUid, defaults.leadExpertUid),
+    ertUid: permitRequiresErtApproval(draft)
+      ? draft.ertUid?.trim() || undefined
+      : undefined,
     executors: resolveExecutorRows(filledNdprExecutors(draft), directory),
     f02: {
       ...draft.f02,
@@ -164,6 +168,10 @@ export function listNdprValidationIssues(draft: PermitDraft): string[] {
 export function validateNdprDraft(draft: PermitDraft): string | null {
   const fieldKey = firstNdprFieldIssueKey(draft)
   if (fieldKey) return formatNdprFieldIssueMessage(fieldKey)
+
+  if (permitRequiresErtApproval(draft) && !draft.ertUid?.trim()) {
+    return 'Укажите ERT (ПАС).'
+  }
 
   const executorKeys = listNdprExecutorIssueKeys(draft)
   if (executorKeys.length > 0) {

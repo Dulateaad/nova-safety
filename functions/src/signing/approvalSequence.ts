@@ -41,11 +41,11 @@ export function nextRoleToSign(permit: DocumentData): EgovSignRole | null {
 }
 
 const SIGNING_ACTION_LABEL: Record<EgovSignRole, string> = {
-  performer: 'Заполнил НДПР',
-  permitter: 'Допустил',
-  issuer: 'Выдал',
-  leadExpert: 'Утвердил',
-  ert: 'Согласовал (ERT)',
+  performer: 'Заполнение НДПР',
+  ert: 'Согласование (ERT)',
+  issuer: 'Выдача',
+  permitter: 'Допуск',
+  leadExpert: 'Утверждение',
 }
 
 const SIGNING_ROLE_CAPTION: Record<EgovSignRole, string> = {

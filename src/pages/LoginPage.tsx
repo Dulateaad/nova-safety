@@ -1,10 +1,14 @@
 import { useState } from 'react'
-import { Link, Navigate, useLocation } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
+import { AppLogo } from '../components/AppLogo'
+import { useLanguage } from '../context/LanguageContext'
 import { useSession } from '../context/SessionContext'
-import { APP_NAME } from '../config/branding'
+import '../login-page.css'
 
 export function LoginPage() {
   const location = useLocation()
+  const { t } = useLanguage()
+  const login = t.login
   const from =
     (location.state as { from?: string } | null)?.from?.startsWith('/login')
       ? '/'
@@ -44,15 +48,13 @@ export function LoginPage() {
           ? String((err as { code: string }).code)
           : ''
       if (code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
-        setFormError('Неверный email или пароль')
+        setFormError(login.wrongCredentials)
       } else if (code === 'auth/too-many-requests') {
-        setFormError('Слишком много попыток. Попробуйте позже')
+        setFormError(login.tooManyAttempts)
       } else if (code === 'auth/user-not-found') {
-        setFormError('Пользователь не найден')
+        setFormError(login.userNotFound)
       } else {
-        setFormError(
-          err instanceof Error ? err.message : 'Не удалось войти',
-        )
+        setFormError(err instanceof Error ? err.message : login.failed)
       }
     } finally {
       setBusy(false)
@@ -60,66 +62,58 @@ export function LoginPage() {
   }
 
   return (
-    <div className="page narrow">
-      <div className="page-header">
-        <h1>{APP_NAME}</h1>
-        <p className="muted">Вход по email и паролю</p>
-      </div>
+    <div className="login-page">
+      <div className="login-page__stack">
+        <section className="login-brand" aria-label="NOVA Safety">
+          <AppLogo className="login-brand__logo" variant="header" size="lg" />
+        </section>
 
-      <form className="card form" onSubmit={onSubmit}>
-        <label>
-          Email
-          <input
-            type="email"
-            autoComplete="username"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </label>
-        <label>
-          Пароль
-          <input
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-        {formError && (
-          <div className="alert error" role="alert">
-            {formError}
+        <form className="login-form" onSubmit={onSubmit}>
+          <label>
+            Email
+            <input
+              type="email"
+              autoComplete="username"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </label>
+          <label>
+            {login.password}
+            <input
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </label>
+          {formError ? (
+            <div className="login-form__error" role="alert">
+              {formError}
+            </div>
+          ) : null}
+          <div className="login-form__actions">
+            <button type="submit" className="login-form__submit" disabled={busy}>
+              {busy ? login.signingIn : login.signIn}
+            </button>
           </div>
-        )}
-        <div className="actions">
-          <button type="submit" className="btn primary" disabled={busy}>
-            {busy ? 'Вход…' : 'Войти'}
-          </button>
-        </div>
-      </form>
+        </form>
 
-      {authReady && user && profileError && (
-        <div className="card" style={{ marginTop: '1rem' }}>
-          <p className="error">{profileError}</p>
-          <button
-            type="button"
-            className="btn ghost"
-            onClick={() => void signOutSession()}
-          >
-            Выйти
-          </button>
-        </div>
-      )}
-
-      <p className="small muted" style={{ marginTop: '1.5rem' }}>
-        Доступ выдаёт администратор: учётная запись в Authentication и документ
-        в Firestore <code>users/&#123;uid&#125;</code> с полями{' '}
-        <code>displayName</code>, <code>role</code> (см. README).
-      </p>
-      <Link className="small muted" to="/">
-        К журналу НД (только при локальном демо)
-      </Link>
+        {authReady && user && profileError ? (
+          <div className="login-form__profile-error">
+            <p>{profileError}</p>
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => void signOutSession()}
+            >
+              {t.layout.signOut}
+            </button>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }

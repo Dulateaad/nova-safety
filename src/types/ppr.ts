@@ -1,5 +1,8 @@
 /** Программа производства работ (ППР) — ручное заполнение перед АСОР. */
 
+import type { SpecialWorkActivity } from './domain'
+import { normalizeSpecialWorkActivities } from './domain'
+
 export interface PprAttachment {
   fileName: string
   mimeType: string
@@ -62,8 +65,10 @@ export interface PprForm {
   siteName: string
   /** Участок, место проведения */
   workArea: string
-  /** Организация-исполнитель */
+  /** Организация-исполнитель / подрядчик */
   contractorOrg: string
+  /** Организация-заказчик (поле «Организация» в НДПР) */
+  customerOrg: string
   periodStart: string
   periodEnd: string
   /** Описание работ (из ППР / ИИ). */
@@ -84,6 +89,8 @@ export interface PprForm {
   attachment?: PprAttachment
   /** Меры контроля — отдельный файл, извлечённый из attachment. */
   controlMeasures?: PprControlMeasuresDoc
+  /** Виды работ — из ИИ / rule-based после анализа ППР. */
+  specialWorkActivities: SpecialWorkActivity[]
   /** Прикреплённые процедуры UOG-HSE (автоподбор по ППР). */
   linkedCertificateIds?: string[]
   preparedBy: string
@@ -113,6 +120,7 @@ export function emptyPprForm(): PprForm {
     siteName: '',
     workArea: '',
     contractorOrg: '',
+    customerOrg: '',
     periodStart: '',
     periodEnd: '',
     workDescription: '',
@@ -122,6 +130,7 @@ export function emptyPprForm(): PprForm {
     personnel: '',
     safetyMeasures: '',
     tasks: [emptyPprTask(1)],
+    specialWorkActivities: [],
     linkedCertificateIds: [],
     preparedBy: '',
     preparationDateIso: new Date().toISOString().slice(0, 10),
@@ -258,6 +267,7 @@ export function normalizePprForm(raw: unknown): PprForm | null {
     siteName: typeof o.siteName === 'string' ? o.siteName : '',
     workArea: typeof o.workArea === 'string' ? o.workArea : '',
     contractorOrg: typeof o.contractorOrg === 'string' ? o.contractorOrg : base.contractorOrg,
+    customerOrg: typeof o.customerOrg === 'string' ? o.customerOrg : base.customerOrg,
     periodStart: typeof o.periodStart === 'string' ? o.periodStart.slice(0, 10) : '',
     periodEnd: typeof o.periodEnd === 'string' ? o.periodEnd.slice(0, 10) : '',
     workDescription: typeof o.workDescription === 'string' ? o.workDescription : '',
@@ -277,6 +287,7 @@ export function normalizePprForm(raw: unknown): PprForm | null {
     linkedCertificateIds: Array.isArray(o.linkedCertificateIds)
       ? o.linkedCertificateIds.filter((x): x is string => typeof x === 'string')
       : [],
+    specialWorkActivities: normalizeSpecialWorkActivities(o.specialWorkActivities),
     preparedBy: typeof o.preparedBy === 'string' ? o.preparedBy : '',
     preparationDateIso:
       typeof o.preparationDateIso === 'string'

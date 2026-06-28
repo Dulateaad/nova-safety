@@ -21,12 +21,13 @@ import { isGeminiExtractionAvailable, tryExtractWithGemini } from './pprGeminiEx
 import {
   extractControlMeasuresFromPdfWithGemini,
   isPdfAttachment,
+  isPprPdfAiReady,
 } from './pprGeminiPdfExtract'
 import {
   buildControlMeasuresUserPrompt,
   PPR_CONTROL_MEASURES_SYSTEM_PROMPT,
 } from '../config/pprControlMeasuresPrompt'
-import { activeAiProviderLabel, isAiClientReady } from './aiClient'
+import { isAiClientReady } from './aiClient'
 import type { PprNdprExtract } from './pprNdprExtract'
 import { normalizeNdprFromPayload } from './pprNdprExtract'
 
@@ -84,9 +85,9 @@ async function extractItemsFromAttachment(
   let ndprExtract: PprNdprExtract | undefined
 
   if (isPdfAttachment(attachment)) {
-    if (!isAiClientReady()) {
+    if (!isPprPdfAiReady()) {
       throw new Error(
-        `Для PDF нужен ключ ${activeAiProviderLabel()} (VITE_ANTHROPIC_API_KEY). Загрузите .docx или настройте API.`,
+        'Для PDF нужен ключ Claude (VITE_ANTHROPIC_API_KEY). Загрузите .docx или настройте API.',
       )
     }
     onStage?.('gemini')

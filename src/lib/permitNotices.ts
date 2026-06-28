@@ -75,6 +75,12 @@ function saveLocalNotices(list: PermitNotice[]) {
   localStorage.setItem(LOCAL_KEY, JSON.stringify(list))
 }
 
+export function removeLocalPermitNoticesForPermits(permitIds: readonly string[]): void {
+  const ids = new Set(permitIds.map((id) => id.trim()).filter(Boolean))
+  if (ids.size === 0) return
+  saveLocalNotices(loadLocalNotices().filter((n) => !ids.has(n.permitId)))
+}
+
 export function upsertLocalPermitNotices(
   permit: Permit,
   kind: PermitNoticeKind,

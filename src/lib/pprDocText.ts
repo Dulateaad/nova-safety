@@ -1,6 +1,6 @@
 import mammoth from 'mammoth'
 import type { PprAttachment } from '../types/ppr'
-import { fillTemplate, localeMessages, type LanguageCode } from '../i18n/getLocale'
+import { localeMessages, type LanguageCode } from '../i18n/getLocale'
 import { guessMimeType } from './pprAttachment'
 
 function attachmentToArrayBuffer(att: PprAttachment): ArrayBuffer {
@@ -85,7 +85,7 @@ export async function extractTextFromPprAttachment(
 
   if (ext === 'pdf' || mime === 'application/pdf') {
     throw new Error(
-      fillTemplate(v.pprPdfGemini, { source: m.branding.sourceDocument }),
+      'PDF не читается как Word. Загрузите файл на шаге «Исходный документ» — Claude Haiku извлечёт данные автоматически.',
     )
   }
 

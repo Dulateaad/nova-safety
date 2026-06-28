@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useSession } from '../context/SessionContext'
 import type { Permit } from '../types/domain'
-import { ZONE_CLASS_LABELS } from '../types/domain'
 import { formatSpecialWorkLabelsLocalized } from '../i18n/getLocale'
 import { StatusBadge } from './StatusBadge'
 import { PermitOnApprovalSummary } from './PermitOnApprovalSummary'
@@ -37,10 +36,10 @@ export function MobilePermitCard({
     <div className={onDelete ? 'permit-card-row' : undefined}>
       <Link to={`/p/${permit.id}`} className="permit-card">
       <div className="permit-card__top">
-        <StatusBadge status={permit.status} />
         <span className="permit-card__reg">
           {badge ?? (permit.registrationRefNo || '—')}
         </span>
+        <StatusBadge status={permit.status} />
       </div>
       <h3 className="permit-card__title">{permit.title || c.untitled}</h3>
       <p className="permit-card__site">{permit.siteName}</p>
@@ -52,10 +51,6 @@ export function MobilePermitCard({
             language,
           )}
         </span>
-        <span className="permit-card__dot" aria-hidden>
-          ·
-        </span>
-        <span>{c.zonePrefix} {ZONE_CLASS_LABELS[permit.zoneClass]}</span>
       </div>
       {showRejectionStrip && isPermitSigningRejected(permit) ? (
         <PermitRejectionStrip permit={permit} resolveUser={resolveUser} compact />

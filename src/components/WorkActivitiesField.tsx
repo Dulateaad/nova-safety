@@ -31,8 +31,6 @@ export function WorkActivitiesField(props: {
     onChange(orderedActivities(next))
   }
 
-  const showFireNote = selected.has('open_flame_fire')
-
   return (
     <section className="work-activities-field" aria-labelledby="work-activities-heading">
       <header className="work-activities-field__header">
@@ -65,9 +63,6 @@ export function WorkActivitiesField(props: {
         <p className="work-activities-field__hint">
           {fillTemplate(wa.hint, { app: APP_NAME })}
         </p>
-        {showFireNote ? (
-          <p className="work-activities-field__fire-note">{wa.fireNote}</p>
-        ) : null}
       </header>
 
       <ul className="work-activities-field__list">

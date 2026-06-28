@@ -8,6 +8,7 @@ const VALID_ROLES: readonly UserRole[] = [
   'coordinator',
   'contractor',
   'safety',
+  'ert',
   'leadExpert',
 ] as const
 

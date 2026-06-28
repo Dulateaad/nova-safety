@@ -17,14 +17,13 @@ import {
 import { enrichPprNdprFieldsSync } from './pprNdprRules'
 import { inferPtwSiteFromPpr } from './inferPtwSiteFromPpr'
 import {
-  buildPprTextHaystack,
   inferPermissionActivitiesFromText,
   inferSpecialWorkActivitiesFromPpr,
   inferSpecialWorkActivitiesFromText,
   mergeSpecialWorkActivities,
 } from './inferSpecialWorkActivityFromPpr'
 import { inferZoneClassFromPpr } from './inferZoneClassFromPpr'
-import { inferContractorOrgFromPpr } from './inferContractorOrgFromPpr'
+import { inferCustomerOrgFromPpr } from './inferContractorOrgFromPpr'
 import {
   filterToolsAgainstWorkTasks,
   normalizeToolsAndEquipmentText,
@@ -37,6 +36,7 @@ export type PprNdprExtract = {
   toolsAndEquipment?: string
   tasks: PprTaskBlock[]
   contractorOrg?: string
+  customerOrg?: string
   siteName?: string
   zoneClass?: ZoneClass
   specialWorkActivity?: SpecialWorkActivity
@@ -266,6 +266,9 @@ export function normalizeNdprFromPayload(
   const contractorOrg = String(
     (payload as { contractorOrg?: unknown }).contractorOrg ?? '',
   ).trim()
+  const customerOrg = String(
+    (payload as { customerOrg?: unknown }).customerOrg ?? '',
+  ).trim()
   const siteName = String((payload as { siteName?: unknown }).siteName ?? '').trim()
   const zoneRaw = (payload as { zoneClass?: unknown }).zoneClass
   const zoneClass =
@@ -292,17 +295,18 @@ export function normalizeNdprFromPayload(
     toolsAndEquipment,
     ...tasks.map((t) => t.taskTitle),
     ...tasks.map((t) => t.workContent),
-    ...(Array.isArray((payload as { controlMeasures?: { section?: string; hazard?: string }[] }).controlMeasures)
-      ? (payload as { controlMeasures: { section?: string; hazard?: string }[] }).controlMeasures.flatMap(
-          (item) => [item.section ?? '', item.hazard ?? ''],
-        )
-      : []),
   ].join('\n')
-  specialWorkActivities = mergeSpecialWorkActivities(
-    specialWorkActivities,
-    inferSpecialWorkActivitiesFromText(activityHaystack),
-    inferPermissionActivitiesFromText(activityHaystack),
-  )
+  if (specialWorkActivities.length) {
+    specialWorkActivities = mergeSpecialWorkActivities(
+      specialWorkActivities,
+      inferPermissionActivitiesFromText(activityHaystack),
+    )
+  } else {
+    specialWorkActivities = mergeSpecialWorkActivities(
+      inferSpecialWorkActivitiesFromText(activityHaystack),
+      inferPermissionActivitiesFromText(activityHaystack),
+    )
+  }
   if (!specialWorkActivities.length) {
     specialWorkActivities =
       activityHaystack.trim().length >= 30 ? ['cold_works'] : []
@@ -316,6 +320,7 @@ export function normalizeNdprFromPayload(
     toolsAndEquipment,
     tasks,
     ...(contractorOrg ? { contractorOrg } : {}),
+    ...(customerOrg ? { customerOrg } : {}),
     ...(siteName ? { siteName } : {}),
     ...(zoneClass ? { zoneClass } : {}),
     specialWorkActivities,
@@ -345,7 +350,13 @@ export function applyNdprExtractToPprForm(
     ...(extract.contractorOrg?.trim()
       ? { contractorOrg: extract.contractorOrg.trim() }
       : {}),
+    ...(extract.customerOrg?.trim()
+      ? { customerOrg: extract.customerOrg.trim() }
+      : {}),
     ...(extract.siteName?.trim() ? { siteName: extract.siteName.trim().slice(0, 200) } : {}),
+    ...(extract.specialWorkActivities?.length
+      ? { specialWorkActivities: extract.specialWorkActivities }
+      : {}),
     tasks,
   }
 }
@@ -386,18 +397,13 @@ export function ndprPatchFromPpr(
       ],
     )
   }
-  const haystack = buildPprTextHaystack(ppr, opts?.docText)
-  const fromWorkTypes = inferSpecialWorkActivitiesFromPpr(ppr, opts?.docText)
-  const fromFullText = inferSpecialWorkActivitiesFromText(haystack)
-  const fromPermissions = inferPermissionActivitiesFromText(haystack)
-  const mergedActivities = mergeSpecialWorkActivities(
-    fromWorkTypes,
-    fromFullText,
-    fromPermissions,
-  )
-  const finalActivities = mergedActivities.length
-    ? mergedActivities
-    : (['cold_works'] as SpecialWorkActivity[])
+  const storedActivities = ppr.specialWorkActivities.filter(Boolean)
+  const inferredActivities = inferSpecialWorkActivitiesFromPpr(ppr, opts?.docText)
+  const finalActivities = storedActivities.length
+    ? storedActivities
+    : inferredActivities.length
+      ? inferredActivities
+      : (['cold_works'] as SpecialWorkActivity[])
   const specialWorkActivity = primarySpecialWorkActivity(finalActivities)
   const derived = applySpecialWorkActivity(specialWorkActivity)
   patch.specialWorkActivities = finalActivities
@@ -406,7 +412,7 @@ export function ndprPatchFromPpr(
   patch.category = derived.category
 
   const f02Patch: Partial<PermitDraft['f02']> = {}
-  const company = inferContractorOrgFromPpr(ppr, opts?.docText)
+  const company = inferCustomerOrgFromPpr(ppr, opts?.docText)
   if (company) f02Patch.company = company
   if (ppr.periodStart) {
     f02Patch.startDate = ppr.periodStart

@@ -150,7 +150,12 @@ export function AiChatWidget() {
               </div>
             ))}
             {busy && (
-              <LoadingProgress label={`${APP_NAME} ${c.processing}`} indeterminate />
+              <LoadingProgress
+                label={`${APP_NAME} ${c.processing}`}
+                indeterminate
+                withTips
+                fullscreen
+              />
             )}
           </div>
 

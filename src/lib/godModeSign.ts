@@ -2,15 +2,18 @@ import type { DemoUser, Permit } from '../types/domain'
 import type { StoredCrewAckSignature } from '../types/crewAck'
 import type { EgovSignRole, StoredEgovSignature } from '../types/egovSignature'
 import { mergePermitAfterEgovSign } from './approvalSequence'
+import { isExecutorCrewAckDone } from './crewAckComplete'
 import { assigneeUidForRole, isRoleSigned } from './signatureStatus'
 import { resolveUserBadgeNo } from './userBadgeNumbers'
+import { FirebaseError } from 'firebase/app'
 import { getFunctions, httpsCallable } from 'firebase/functions'
 import { app, firebaseConfigured } from './firebase'
 
 const REGION = 'europe-west1'
 const GOD_CMS = 'R09ELU1PREU=' // base64 "GOD-MODE"
 
-const APPROVER_ROLES: EgovSignRole[] = ['performer', 'issuer', 'permitter', 'leadExpert']
+/** Согласующие, которых подписывает GOD MODE (без производителя и ERT). */
+export const GOD_MODE_APPROVER_ROLES: EgovSignRole[] = ['issuer', 'permitter', 'leadExpert']
 
 export type GodModeSignSummary = {
   permitId: string
@@ -18,6 +21,7 @@ export type GodModeSignSummary = {
   approversSigned: number
   skippedProducer: boolean
   skippedErt: number
+  issued?: boolean
 }
 
 function stubEgovSignature(
@@ -64,6 +68,34 @@ function shouldSkipExecutor(
   return role === 'ert' || role === 'performer' || role === 'safety'
 }
 
+export function godModeCrewAckComplete(
+  permit: Permit,
+  resolveUser: (id: string) => DemoUser | undefined,
+): boolean {
+  for (const ex of permit.executors) {
+    const uid = ex.userUid?.trim()
+    if (!uid || shouldSkipExecutor(permit, uid, resolveUser)) continue
+    if (!isExecutorCrewAckDone(permit, uid)) return false
+  }
+  return true
+}
+
+export function godModeApprovalsComplete(permit: Permit): boolean {
+  return GOD_MODE_APPROVER_ROLES.every((role) => isRoleSigned(permit, role))
+}
+
+/** Выдача наряда после GOD MODE (без подписи производителя и ERT). */
+export function issueStatusPatchIfGodModeComplete(
+  permit: Permit,
+  resolveUser: (id: string) => DemoUser | undefined,
+): Partial<Permit> | null {
+  if (permit.status !== 'on_approval') return null
+  if (!godModeCrewAckComplete(permit, resolveUser)) return null
+  if (!godModeApprovalsComplete(permit)) return null
+  if (permit.isContractorPermit && !permit.contractorSafetyApproved) return null
+  return { status: 'issued' }
+}
+
 /** Локальный патч: работники + 3 согласующих (без производителя и ERT). */
 export function buildGodModePermitPatch(
   permit: Permit,
@@ -101,7 +133,7 @@ export function buildGodModePermitPatch(
   let merged: Permit = { ...permit, executors, crewAckSignatures }
   let approversSigned = 0
 
-  for (const role of APPROVER_ROLES) {
+  for (const role of GOD_MODE_APPROVER_ROLES) {
     if (isRoleSigned(merged, role)) continue
     const uid = assigneeUidForRole(merged, role)
     if (!uid) continue
@@ -127,8 +159,26 @@ export function buildGodModePermitPatch(
     summary: {
       crewSigned,
       approversSigned,
-      skippedProducer: false,
+      skippedProducer: true,
       skippedErt,
+    },
+  }
+}
+
+/** Подписи GOD MODE + автовыдача наряда (локальный / демо режим). */
+export function applyGodModeToPermit(
+  permit: Permit,
+  resolveUser: (uid: string) => DemoUser | undefined,
+  userDirectory: DemoUser[],
+): { patch: Partial<Permit>; summary: Omit<GodModeSignSummary, 'permitId'> } {
+  const { patch, summary } = buildGodModePermitPatch(permit, resolveUser, userDirectory)
+  const merged = { ...permit, ...patch } as Permit
+  const issuePatch = issueStatusPatchIfGodModeComplete(merged, resolveUser)
+  return {
+    patch: { ...patch, ...(issuePatch ?? {}) },
+    summary: {
+      ...summary,
+      issued: issuePatch?.status === 'issued',
     },
   }
 }
@@ -141,8 +191,18 @@ export async function godModeSignPermitClient(
     getFunctions(app, REGION),
     'godModeSignPermitFn',
   )
-  const res = await fn({ permitId })
-  return res.data
+  try {
+    const res = await fn({ permitId })
+    return res.data
+  } catch (e) {
+    const message =
+      e instanceof FirebaseError
+        ? e.message
+        : e instanceof Error
+          ? e.message
+          : 'GOD MODE не выполнен'
+    throw new Error(message)
+  }
 }
 
 export function findLatestPermit(permits: Permit[]): Permit | null {

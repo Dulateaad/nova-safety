@@ -11,7 +11,6 @@ import { SigningInvitesPanel } from '../components/SigningInvitesPanel'
 import { RejectedPermitsPanel } from '../components/RejectedPermitsPanel'
 import { WorkStopAlertsPanel } from '../components/WorkStopAlertsPanel'
 import { WorkStopResolutionNoticesPanel } from '../components/WorkStopResolutionNoticesPanel'
-import { AdminNotificationEmailsPanel } from '../components/AdminNotificationEmailsPanel'
 import { PermitNoticesPanel } from '../components/PermitNoticesPanel'
 import { ErtGasTestTasksPanel } from '../components/ErtGasTestTasksPanel'
 import { PermitterPreWorkTasksPanel } from '../components/PermitterPreWorkTasksPanel'
@@ -21,14 +20,13 @@ import { useDismissedRejectionNotices } from '../hooks/useDismissedRejectionNoti
 import { useSigningInvites } from '../hooks/useSigningInvites'
 import { useWorkStopAlerts } from '../hooks/useWorkStopAlerts'
 import { useWorkStopResolutionDismissal } from '../hooks/useWorkStopResolutionDismissal'
-import { useInspectorSettings } from '../hooks/useInspectorSettings'
-import { useSigningSettings } from '../hooks/useSigningSettings'
 import {
   approvalActionHint,
   pendingApprovalsForUser,
 } from '../lib/approvalQueue'
+import { pendingAbrDailyAckPermitsForUser } from '../lib/abrDailyAck'
 import { ertGasTestTasksForUser } from '../lib/ertGasTestHints'
-import { permitterPreWorkTasksForUser } from '../lib/permitterPreWorkHints'
+import { performerPreWorkTasksForUser } from '../lib/permitterPreWorkHints'
 import {
   isPermitSigningRejected,
   rejectedPermitsForUser,
@@ -36,15 +34,13 @@ import {
 } from '../lib/permitRejectionDisplay'
 import { workStopResolutionNoticesForUser } from '../lib/workStopResolutionNotices'
 import { isInspectorUser } from '../lib/inspectorAccess'
-import { updateInspectorNotifyMode } from '../lib/inspectorSettings'
-import { updateSigningSettings } from '../lib/signingSettings'
 import {
   filterPermitsForUser,
   canUserCreatePermitPackage,
 } from '../lib/permitAccess'
 import { canUserDeletePermit } from '../lib/permitDelete'
 import {
-  buildGodModePermitPatch,
+  applyGodModeToPermit,
   canUseGodMode,
   findLatestPermit,
   godModeSignPermitClient,
@@ -53,10 +49,10 @@ import {
   cleanupOrphanSigningInvitesClient,
   renumberPermitsClient,
 } from '../lib/renumberPermits'
+import { filterByExistingPermits } from '../lib/cleanupPermitRelatedData'
 import { notifySigningInvitesRefresh } from '../lib/refreshSigningInvites'
 import { notifyPermitNoticesRefresh } from '../lib/refreshPermitNotices'
-import { issueStatusPatchIfApprovalsComplete } from '../lib/transitions'
-import { INSPECTOR_ROLE_TITLE, ZONE_CLASS_LABELS } from '../types/domain'
+import { downloadPermitsCsv } from '../lib/exportPermitsCsv'
 import type { Permit, PermitStatus } from '../types/domain'
 
 type JournalFilter =
@@ -66,6 +62,8 @@ type JournalFilter =
   | 'issued'
   | 'active'
   | 'closed'
+
+type JournalViewTab = 'issued' | 'archive' | 'search'
 
 const ISSUED_STATUSES = new Set<PermitStatus>(['issued', 'in_progress', 'suspended'])
 const CLOSED_STATUSES = new Set<PermitStatus>(['closed', 'archived', 'annulled'])
@@ -119,11 +117,10 @@ function journalFilterLabel(
 export function PermitListPage() {
   const { t, language } = useLanguage()
   const j = t.journal
-  const ap = t.adminPanel
   const gm = t.godMode
-  const adm = t.admin
   const c = t.common
   const approval = t.approval
+  const abrDaily = t.abrDailyAck
   const inv = t.invites
   const jt = t.journalTable
 
@@ -142,11 +139,16 @@ export function PermitListPage() {
   const [busy, setBusy] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [journalFilter, setJournalFilter] = useState<JournalFilter>('all')
+  const [journalViewTab, setJournalViewTab] = useState<JournalViewTab>('search')
   const [searchQuery, setSearchQuery] = useState('')
 
   const permits = useMemo(
     () => filterPermitsForUser(allPermits, user),
     [allPermits, user],
+  )
+  const livePermitIds = useMemo(
+    () => new Set(allPermits.map((p) => p.id)),
+    [allPermits],
   )
   const visiblePermits = useMemo(
     () => filterJournalPermits(permits, journalFilter),
@@ -187,11 +189,19 @@ export function PermitListPage() {
   }, [permits])
 
   const pending = user ? pendingApprovalsForUser(permits, user) : []
-  const signingInvites = useSigningInvites(user?.id)
+  const signingInvitesRaw = useSigningInvites(user?.id)
+  const signingInvites = useMemo(
+    () => filterByExistingPermits(signingInvitesRaw, livePermitIds),
+    [signingInvitesRaw, livePermitIds],
+  )
   const pendingWithoutInviteDup = pending.filter((item) => {
     if (item.action === 'issue_permit') return true
     return !signingInvites.some((invItem) => invItem.permitId === item.permit.id)
   })
+  const dailyAckPending = useMemo(
+    () => (user ? pendingAbrDailyAckPermitsForUser(permits, user.id) : []),
+    [permits, user],
+  )
 
   const { dismissed: dismissedRejections, dismiss: dismissRejection } =
     useDismissedRejectionNotices(user?.id)
@@ -205,63 +215,53 @@ export function PermitListPage() {
     [permits, user?.id, dismissedWorkStopResolutions],
   )
 
-  const workStopAlerts = useWorkStopAlerts(
+  const workStopAlertsRaw = useWorkStopAlerts(
     user && isInspectorUser(user) ? user.id : undefined,
+  )
+  const workStopAlerts = useMemo(
+    () => filterByExistingPermits(workStopAlertsRaw, livePermitIds),
+    [workStopAlertsRaw, livePermitIds],
   )
   const allPermitNotices = usePermitNotices(user?.id)
   const { dismissed: dismissedNotices, dismiss: dismissNotice } =
     useDismissedPermitNotices(user?.id)
   const permitNotices = useMemo(
-    () => allPermitNotices.filter((n) => !dismissedNotices.has(n.id)),
-    [allPermitNotices, dismissedNotices],
+    () =>
+      filterByExistingPermits(
+        allPermitNotices.filter((n) => !dismissedNotices.has(n.id)),
+        livePermitIds,
+      ),
+    [allPermitNotices, dismissedNotices, livePermitIds],
   )
   const ertGasTasks = useMemo(
     () => ertGasTestTasksForUser(permits, user),
     [permits, user],
   )
-  const permitterPreWorkTasks = useMemo(
-    () => permitterPreWorkTasksForUser(permits, user),
+  const performerPreWorkTasks = useMemo(
+    () => performerPreWorkTasksForUser(permits, user),
     [permits, user],
   )
-
-  const {
-    settings: inspectorSettings,
-    loading: inspectorSettingsLoading,
-    setSettings: setInspectorSettings,
-  } = useInspectorSettings()
-
-  const {
-    verifyEgovFio,
-    loading: signingSettingsLoading,
-    setSettings: setSigningSettings,
-  } = useSigningSettings()
 
   const canCreate = canUserCreatePermitPackage(user)
   const canDeleteAll = user ? canUserDeletePermit(user) : false
   const canRenumber = user?.role === 'coordinator' && allPermits.length > 0
   const canCleanupInvites = user?.role === 'coordinator' && authMode === 'firebase'
-  const canManageSigningSettings =
-    user?.role === 'coordinator' && authMode === 'firebase'
-  const canManageInspectorSettings =
-    user?.role === 'coordinator' && authMode === 'firebase'
-  const showGodMode = canUseGodMode(user)
+  const isCoordinator = user?.role === 'coordinator'
+  const isErt = user?.role === 'ert'
 
   const godModeTarget = useMemo(() => {
     const candidates = allPermits.filter((p) => p.status === 'on_approval')
     return findLatestPermit(candidates)
   }, [allPermits])
 
+  const canGodMode = canUseGodMode(user) && Boolean(godModeTarget)
+
   const permitCreatedAtIso = (permitId: string) =>
     allPermits.find((p) => p.id === permitId)?.createdAtIso
 
-  const latestPermit = useMemo(() => findLatestPermit(allPermits), [allPermits])
-  const canGodMode =
-    canUseGodMode(user) &&
-    latestPermit?.status === 'on_approval'
-
   async function runGodModeOnLatest() {
-    if (!canGodMode || !latestPermit) return
-    const label = latestPermit.registrationRefNo || latestPermit.title || latestPermit.id
+    if (!canGodMode || !godModeTarget) return
+    const label = godModeTarget.registrationRefNo || godModeTarget.title || godModeTarget.id
     if (
       !window.confirm(
         fillTemplate(gm.confirm, { label }),
@@ -272,11 +272,11 @@ export function PermitListPage() {
     setBusy(true)
     try {
       if (authMode === 'firebase') {
-        const result = await godModeSignPermitClient(latestPermit.id)
+        const result = await godModeSignPermitClient(godModeTarget.id)
         if (!result) throw new Error(t.alerts.firebaseFunctionsUnavailable)
         await refresh()
         notifySigningInvitesRefresh()
-        notifyPermitNoticesRefresh()
+        if (result.issued) notifyPermitNoticesRefresh()
         window.alert(
           fillTemplate(gm.done, {
             crewSigned: result.crewSigned,
@@ -285,17 +285,20 @@ export function PermitListPage() {
           }),
         )
       } else {
-        const { patch, summary } = buildGodModePermitPatch(
-          latestPermit,
+        const { patch, summary } = applyGodModeToPermit(
+          godModeTarget,
           resolveUser,
           userDirectory,
         )
-        await updatePermit(latestPermit.id, patch)
+        await updatePermit(godModeTarget.id, patch)
         await refresh()
-        void import('../lib/permitNotices').then((m) => {
-          m.upsertLocalPermitNotices({ ...latestPermit, ...patch }, 'issued')
-          notifyPermitNoticesRefresh()
-        })
+        if (summary.issued) {
+          void import('../lib/permitNotices').then((m) => {
+            m.upsertLocalPermitNotices({ ...godModeTarget, ...patch }, 'issued')
+            notifyPermitNoticesRefresh()
+          })
+        }
+        notifySigningInvitesRefresh()
         window.alert(
           fillTemplate(gm.doneDemo, {
             crewSigned: summary.crewSigned,
@@ -305,37 +308,6 @@ export function PermitListPage() {
       }
     } catch (e) {
       window.alert(e instanceof Error ? e.message : gm.failed)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function toggleInspectorNotifyMode() {
-    if (!canManageInspectorSettings || inspectorSettingsLoading) return
-    setBusy(true)
-    try {
-      const next =
-        inspectorSettings.inspectorNotifyMode === 'global' ? 'site_bound' : 'global'
-      const result = await updateInspectorNotifyMode(next)
-      if (!result) throw new Error(t.alerts.firebaseFunctionsUnavailable)
-      setInspectorSettings(result)
-    } catch (e) {
-      window.alert(e instanceof Error ? e.message : t.alerts.settingsFailed)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function toggleVerifyEgovFio() {
-    if (!canManageSigningSettings || signingSettingsLoading) return
-    setBusy(true)
-    try {
-      const next = !verifyEgovFio
-      const result = await updateSigningSettings(next)
-      if (!result) throw new Error(t.alerts.firebaseFunctionsUnavailable)
-      setSigningSettings(result)
-    } catch (e) {
-      window.alert(e instanceof Error ? e.message : t.alerts.settingsFailed)
     } finally {
       setBusy(false)
     }
@@ -396,6 +368,7 @@ export function PermitListPage() {
     try {
       await deleteAllPermits()
       notifySigningInvitesRefresh()
+      notifyPermitNoticesRefresh()
     } catch (e) {
       window.alert(e instanceof Error ? e.message : t.alerts.deleteFailed)
     } finally {
@@ -411,6 +384,7 @@ export function PermitListPage() {
     try {
       await deletePermit(permit.id)
       notifySigningInvitesRefresh()
+      notifyPermitNoticesRefresh()
     } catch (e) {
       window.alert(e instanceof Error ? e.message : t.alerts.deleteFailed)
     } finally {
@@ -418,47 +392,11 @@ export function PermitListPage() {
     }
   }
 
-  async function runGodModeSign() {
-    if (!showGodMode || !godModeTarget) return
-    const label = godModeTarget.registrationRefNo || godModeTarget.title
-    if (!window.confirm(fillTemplate(gm.confirm, { label }))) return
-    setBusy(true)
-    try {
-      if (authMode === 'firebase') {
-        const summary = await godModeSignPermitClient(godModeTarget.id)
-        if (!summary) throw new Error(gm.failed)
-        window.alert(
-          fillTemplate(gm.done, {
-            crewSigned: summary.crewSigned,
-            approversSigned: summary.approversSigned,
-            skippedErt: summary.skippedErt,
-          }),
-        )
-        await refresh()
-      } else {
-        const { patch, summary } = buildGodModePermitPatch(
-          godModeTarget,
-          resolveUser,
-          userDirectory,
-        )
-        const merged = { ...godModeTarget, ...patch }
-        await updatePermit(godModeTarget.id, {
-          ...patch,
-          ...issueStatusPatchIfApprovalsComplete(merged),
-        })
-        window.alert(
-          fillTemplate(gm.doneDemo, {
-            crewSigned: summary.crewSigned,
-            approversSigned: summary.approversSigned,
-          }),
-        )
-      }
-      notifySigningInvitesRefresh()
-    } catch {
-      window.alert(gm.failed)
-    } finally {
-      setBusy(false)
-    }
+  function selectJournalViewTab(tab: JournalViewTab) {
+    setJournalViewTab(tab)
+    if (tab === 'issued') setJournalFilter('active')
+    else if (tab === 'archive') setJournalFilter('closed')
+    else setJournalFilter('all')
   }
 
   return (
@@ -467,11 +405,55 @@ export function PermitListPage() {
         <div className="journal-hero__content">
           <h1 className="journal-hero__title">{j.title}</h1>
           <p className="muted small journal-hero__subtitle">{j.subtitle}</p>
-          {canCreate ? (
-            <Link className="btn primary journal-hero__cta" to="/ppr?fresh=1">
-              + {j.createPermit}
-            </Link>
+          {isCoordinator ? (
+            <div className="journal-view-tabs" role="tablist" aria-label={j.title}>
+              {(
+                [
+                  ['issued', j.tabIssued],
+                  ['archive', j.tabArchive],
+                  ['search', j.tabSearch],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={journalViewTab === id}
+                  className={`journal-view-tab${journalViewTab === id ? ' journal-view-tab--active' : ''}`}
+                  onClick={() => selectJournalViewTab(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           ) : null}
+          <div className="journal-hero__actions">
+            {canCreate ? (
+              <Link className="btn primary journal-hero__cta" to="/ppr?fresh=1">
+                + {j.createPermit}
+              </Link>
+            ) : null}
+            {isCoordinator ? (
+              <>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  disabled={permits.length === 0}
+                  onClick={() =>
+                    downloadPermitsCsv(
+                      permits,
+                      `journal-nd-${new Date().toISOString().slice(0, 10)}.csv`,
+                    )
+                  }
+                >
+                  {j.exportExcel}
+                </button>
+                <Link className="btn ghost" to="/admin">
+                  {j.openAdmin}
+                </Link>
+              </>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -510,32 +492,6 @@ export function PermitListPage() {
         </div>
       ) : null}
 
-      {user?.role === 'coordinator' ? (
-        <section className="card" style={{ marginBottom: '1rem' }}>
-          <h2 className="small" style={{ marginTop: 0 }}>
-            {fillTemplate(ap.titleInspector, { role: INSPECTOR_ROLE_TITLE })}
-          </h2>
-          <p className="muted small">
-            {ap.workStopNotifications}{' '}
-            <strong>
-              {inspectorSettings.inspectorNotifyMode === 'global'
-                ? adm.inspectorScopeAll
-                : adm.inspectorScopeZone}
-            </strong>
-          </p>
-          <button
-            type="button"
-            className="btn ghost"
-            disabled={busy || inspectorSettingsLoading}
-            onClick={() => void toggleInspectorNotifyMode()}
-          >
-            {inspectorSettings.inspectorNotifyMode === 'global'
-              ? adm.enableZoneScope
-              : adm.enableGlobalScope}
-          </button>
-        </section>
-      ) : null}
-
       {canUseGodMode(user) ? (
         <section
           className="card"
@@ -550,16 +506,16 @@ export function PermitListPage() {
             <strong>{gm.descriptionApprovers}</strong> {gm.descriptionApproversList}{' '}
             {gm.descriptionExcluded}
           </p>
-          {latestPermit ? (
+          {godModeTarget ? (
             <p className="small" style={{ marginBottom: '0.75rem' }}>
               {gm.latestPermit}{' '}
-              <Link to={`/permits/${latestPermit.id}`}>
-                {latestPermit.registrationRefNo || latestPermit.title || '—'}
+              <Link to={`/p/${godModeTarget.id}`}>
+                {godModeTarget.registrationRefNo || godModeTarget.title || '—'}
               </Link>{' '}
-              · <StatusBadge status={latestPermit.status} />
+              · <StatusBadge status={godModeTarget.status} />
             </p>
           ) : (
-            <p className="muted small">{gm.noPermits}</p>
+            <p className="muted small">{t.admin.godModeNeedPermit}</p>
           )}
           <button
             type="button"
@@ -573,68 +529,17 @@ export function PermitListPage() {
         </section>
       ) : null}
 
-      {canManageSigningSettings ? (
-        <section className="card" style={{ marginBottom: '1rem' }}>
-          <h2 className="small" style={{ marginTop: 0 }}>
-            {ap.titleEgovSign}
-          </h2>
-          <p className="muted small" style={{ marginBottom: '0.75rem' }}>
-            {adm.fioVerifyLabel}. {ap.currently}{' '}
-            <strong>{verifyEgovFio ? c.enabled : c.disabled}</strong>.
-          </p>
-          <button
-            type="button"
-            className="btn ghost"
-            disabled={busy || signingSettingsLoading}
-            onClick={() => void toggleVerifyEgovFio()}
-          >
-            {verifyEgovFio ? adm.disableFioVerify : adm.enableFioVerify}
-          </button>
-        </section>
+      <ErtGasTestTasksPanel tasks={ertGasTasks} />
+
+      <PermitNoticesPanel notices={permitNotices} onDismiss={dismissNotice} />
+
+      {!isErt ? (
+        <RejectedPermitsPanel
+          permits={rejectedPermits}
+          resolveUser={resolveUser}
+          onDismiss={dismissRejection}
+        />
       ) : null}
-
-      {canManageSigningSettings ? <AdminNotificationEmailsPanel /> : null}
-
-      {showGodMode ? (
-        <section className="card god-mode-card" style={{ marginBottom: '1rem' }}>
-          <h2 className="small" style={{ marginTop: 0 }}>
-            {gm.title}
-          </h2>
-          <p className="muted small">
-            {gm.descriptionIntro} {gm.descriptionWorkers} {gm.descriptionAck}{' '}
-            {gm.descriptionApprovers} {gm.descriptionApproversList}{' '}
-            {gm.descriptionExcluded}
-          </p>
-          <p className="small">
-            {gm.latestPermit}{' '}
-            <strong>
-              {godModeTarget
-                ? godModeTarget.registrationRefNo || godModeTarget.title
-                : gm.noPermits}
-            </strong>
-          </p>
-          <button
-            type="button"
-            className="btn ghost"
-            disabled={busy || !godModeTarget}
-            onClick={() => void runGodModeSign()}
-          >
-            {busy ? gm.busy : gm.signLatest}
-          </button>
-        </section>
-      ) : null}
-
-      <RejectedPermitsPanel
-        permits={rejectedPermits}
-        resolveUser={resolveUser}
-        onDismiss={dismissRejection}
-      />
-
-      <RejectedPermitsPanel
-        permits={rejectedPermits}
-        resolveUser={resolveUser}
-        onDismiss={dismissRejection}
-      />
 
       <SigningInvitesPanel
         invites={signingInvites}
@@ -642,11 +547,9 @@ export function PermitListPage() {
         title={user?.role === 'executor' ? inv.ackTitle : inv.signTitle}
       />
 
-      <PermitNoticesPanel notices={permitNotices} onDismiss={dismissNotice} />
-
-      <ErtGasTestTasksPanel tasks={ertGasTasks} />
-
-      <PermitterPreWorkTasksPanel tasks={permitterPreWorkTasks} />
+      {user?.role === 'performer' ? (
+        <PermitterPreWorkTasksPanel tasks={performerPreWorkTasks} />
+      ) : null}
 
       <WorkStopResolutionNoticesPanel
         permits={workStopResolutionNotices}
@@ -655,7 +558,36 @@ export function PermitListPage() {
 
       {isInspectorUser(user) ? <WorkStopAlertsPanel alerts={workStopAlerts} /> : null}
 
-      {pendingWithoutInviteDup.length > 0 ? (
+      {dailyAckPending.length > 0 ? (
+        <section className="card" style={{ marginBottom: '1rem' }}>
+          <h2 style={{ marginTop: 0 }}>{abrDaily.pendingTitle}</h2>
+          <p className="muted small" style={{ marginTop: 0 }}>
+            {abrDaily.pendingHint}
+          </p>
+          <ul className="compact-list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {dailyAckPending.map((permit) => (
+              <li
+                key={permit.id}
+                className="card"
+                style={{ marginBottom: '0.65rem', padding: '0.85rem' }}
+              >
+                <div className="row-inline" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <StatusBadge status={permit.status} />
+                  <span className="strong">{permit.title}</span>
+                  <span className="small muted">
+                    № {permit.registrationRefNo || '—'}
+                  </span>
+                </div>
+                <Link className="btn primary small" to={`/p/${permit.id}`} style={{ marginTop: '0.65rem' }}>
+                  {abrDaily.openPermit}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {!isErt && pendingWithoutInviteDup.length > 0 ? (
         <section className="card" style={{ marginBottom: '1rem' }}>
           <h2 style={{ marginTop: 0 }}>{approval.pendingTitle}</h2>
           <p className="muted small" style={{ marginTop: 0 }}>
@@ -791,10 +723,9 @@ export function PermitListPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>{jt.siteTopic}</th>
                   <th>{jt.regNo}</th>
+                  <th>{jt.siteTopic}</th>
                   <th>{jt.workTypes}</th>
-                  <th>{jt.zone}</th>
                   <th>{jt.status}</th>
                   <th>{jt.updated}</th>
                   {canDeleteAll ? <th>{jt.admin}</th> : null}
@@ -804,11 +735,13 @@ export function PermitListPage() {
               <tbody>
                 {filteredPermits.map((p) => (
                   <tr key={p.id}>
-                    <td>
-                      <div className="strong">{p.title}</div>
-                      <div className="small muted">{p.siteName}</div>
-                    </td>
                     <td className="small muted">{p.registrationRefNo || '—'}</td>
+                    <td>
+                      <Link to={`/p/${p.id}`} className="journal-permit-link">
+                        <div className="strong">{p.title || c.untitled}</div>
+                        <div className="small muted">{p.siteName || '—'}</div>
+                      </Link>
+                    </td>
                     <td>
                       {formatSpecialWorkLabelsLocalized(
                         p.specialWorkActivities,
@@ -816,7 +749,6 @@ export function PermitListPage() {
                         language,
                       )}
                     </td>
-                    <td>{ZONE_CLASS_LABELS[p.zoneClass]}</td>
                     <td>
                       <StatusBadge status={p.status} />
                     </td>

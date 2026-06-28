@@ -37,6 +37,8 @@ import {
   permissionNoticesForActivities,
   requiresWorkPermissions,
   validateWorkPermissionsBundle,
+  ensureWorkPermissionsPdfsReady,
+  isWorkPermissionPdfReady,
   wizardStepCount,
 } from '../lib/workPermissions'
 import {
@@ -124,9 +126,16 @@ export function PermissionsPage() {
         return {
           ...prev,
           updatedAtIso: new Date().toISOString(),
-          documents: prev.documents.map((d) =>
-            d.kind === kind ? { ...d, ...patch, form: { ...d.form, ...patch.form } } : d,
-          ),
+          documents: prev.documents.map((d) => {
+            if (d.kind !== kind) return d
+            const next = { ...d, ...patch, form: { ...d.form, ...patch.form } }
+            if (patch.form) {
+              next.generatedAtIso = undefined
+              next.pdfBase64 = undefined
+              next.documentHash = undefined
+            }
+            return next
+          }),
         }
       })
     },
@@ -189,25 +198,29 @@ export function PermissionsPage() {
       showError(submitPermitPackageDeniedReason(user))
       return
     }
-    const permErr = validateWorkPermissionsBundle(bundle, draft)
-    if (permErr) {
-      showError(permErr)
-      return
-    }
-    const asorErr = validateAsorForm(form)
-    if (asorErr) {
-      showError(asorErr)
-      return
-    }
-    const ndprErr = validateNdprDraft(draft)
-    if (ndprErr) {
-      showError(ndprErr)
-      return
-    }
 
     setBusy(true)
+    setStage(pp.prepPackage)
     try {
-      setStage(pp.prepPackage)
+      const readyBundle = await ensureWorkPermissionsPdfsReady(draft, bundle, ppr ?? undefined)
+      setBundle(readyBundle)
+
+      const permErr = validateWorkPermissionsBundle(readyBundle, draft)
+      if (permErr) {
+        showError(permErr)
+        return
+      }
+      const asorErr = validateAsorForm(form)
+      if (asorErr) {
+        showError(asorErr)
+        return
+      }
+      const ndprErr = validateNdprDraft(draft)
+      if (ndprErr) {
+        showError(ndprErr)
+        return
+      }
+
       const asorWithApprovers = finalizeAsorFormForReady(
         seedApprovalNamesFromPermit(form, draft, resolveUser, resolveBadge),
         ppr ?? undefined,
@@ -217,7 +230,7 @@ export function PermissionsPage() {
         ...packageDraft,
         ppr: ppr ?? undefined,
         asor: asorWithApprovers,
-        workPermissions: bundle,
+        workPermissions: readyBundle,
       }
 
       setPermissionsGatePassed()
@@ -347,7 +360,7 @@ export function PermissionsPage() {
                 <p className="work-perm-card__meta muted xsmall">
                   {fillTemplate(pb.cardMeta, { shortLabel: meta.shortLabel })}
                 </p>
-                {doc.generatedAtIso ? (
+                {isWorkPermissionPdfReady(doc) ? (
                   <span className="work-perm-card__status">{pb.pdfReady}</span>
                 ) : (
                   <span className="work-perm-card__status work-perm-card__status--pending">
@@ -425,7 +438,12 @@ export function PermissionsPage() {
             fullscreen
           />
         ) : busy ? (
-          <LoadingProgress label={stage ?? `${APP_NAME}…`} indeterminate />
+          <LoadingProgress
+            label={stage ?? `${APP_NAME}…`}
+            indeterminate
+            withTips
+            fullscreen
+          />
         ) : null}
       </section>
     </div>

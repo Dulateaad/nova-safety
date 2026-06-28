@@ -48,6 +48,17 @@ import type { WorkStopPhoto } from '../types/workStop'
 
 export type AuthMode = 'local' | 'firebase'
 
+function applyKnownAccountProfile(me: DemoUser): DemoUser {
+  const email = me.email.trim().toLowerCase()
+  const template = DEMO_USERS.find((u) => u.email.trim().toLowerCase() === email)
+  if (!template) return me
+  return {
+    ...me,
+    displayName: template.displayName,
+    badgeNo: me.badgeNo?.trim() || template.badgeNo,
+  }
+}
+
 interface SessionValue {
   authMode: AuthMode
   /** Пока слушаем Firebase Auth в первый раз */
@@ -137,10 +148,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           await signOut(authInstance)
           return
         }
-        const me = profileDocToDemoUser(
-          fbUser.uid,
-          snap.data() as Record<string, unknown>,
-          fbUser.email ?? '',
+        const me = applyKnownAccountProfile(
+          profileDocToDemoUser(
+            fbUser.uid,
+            snap.data() as Record<string, unknown>,
+            fbUser.email ?? '',
+          ),
         )
         setFirebaseActor(me)
 

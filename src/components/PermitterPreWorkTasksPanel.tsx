@@ -38,7 +38,7 @@ export function PermitterPreWorkTasksPanel(props: { tasks: PermitterPreWorkTask[
             <p className="small" style={{ margin: '0.5rem 0 0.65rem' }}>
               {summary}
             </p>
-            <Link className="btn primary small" to={`/p/${permit.id}#permitter-pre-work`}>
+            <Link className="btn primary small" to={`/p/${permit.id}#performer-pre-work`}>
               {pwc.openChecks}
             </Link>
           </li>

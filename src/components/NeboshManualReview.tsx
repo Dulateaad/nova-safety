@@ -1,9 +1,23 @@
 import { AddPlusButton } from './AddPlusButton'
 import {
+  addNeboshHazard,
   addNeboshTask,
   patchNeboshTask,
+  removeNeboshHazard,
   removeNeboshTask,
 } from '../lib/neboshTaskListEdit'
+import {
+  NEBOSH_LIKELIHOOD_LABELS,
+  NEBOSH_RISK_BAND_LABELS,
+  NEBOSH_SEVERITY_LABELS,
+  neboshBandToResidual,
+  neboshCellColor,
+  neboshCellTextColor,
+  neboshRiskBand,
+  neboshRiskScore,
+  parseNeboshScale,
+  type NeboshScaleValue,
+} from '../config/neboshRiskMatrix'
 import {
   emptyPersonRow,
   type AsorForm,
@@ -12,13 +26,35 @@ import {
 import { useLanguage } from '../context/LanguageContext'
 import { fillTemplate } from '../i18n/getLocale'
 
+function ScaleSelect(props: {
+  value: NeboshScaleValue
+  labels: Record<Exclude<NeboshScaleValue, 0>, string>
+  onChange: (value: NeboshScaleValue) => void
+}) {
+  const { value, labels, onChange } = props
+  return (
+    <select
+      value={value || ''}
+      onChange={(e) => onChange(parseNeboshScale(Number(e.target.value)))}
+    >
+      <option value="">—</option>
+      {([1, 2, 3, 4, 5] as const).map((n) => (
+        <option key={n} value={n}>
+          {labels[n]}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 export function NeboshManualReview(props: {
   form: AsorForm
   onChange: (form: AsorForm) => void
   open: boolean
   onOpenChange: (open: boolean) => void
+  embedded?: boolean
 }) {
-  const { form, onChange, open, onOpenChange } = props
+  const { form, onChange, open, onOpenChange, embedded = false } = props
   const nb = form.nebosh
 
   const { t } = useLanguage()
@@ -60,24 +96,32 @@ export function NeboshManualReview(props: {
         if (ti !== taskIndex) return t
         return {
           ...t,
-          hazards: t.hazards.map((h, hi) => (hi === hazardIndex ? { ...h, ...partial } : h)),
+          hazards: t.hazards.map((h, hi) => {
+            if (hi !== hazardIndex) return h
+            const next = { ...h, ...partial }
+            const score = neboshRiskScore(next.initialLikelihood, next.initialSeverity)
+            const band = neboshRiskBand(score)
+            return {
+              ...next,
+              residualRisk: band ? neboshBandToResidual(band) : next.residualRisk,
+            }
+          }),
         }
       }),
     })
   }
 
-  return (
-    <details className="card" open={open} style={{ marginTop: '0.85rem' }}>
-      <summary
-        style={{ cursor: 'pointer', fontWeight: 600 }}
-        onClick={(e) => {
-          e.preventDefault()
-          onOpenChange(!open)
-        }}
-      >
-        {mrf.riskTitle}
-      </summary>
-      <p className="muted xsmall" style={{ marginTop: '0.65rem' }}>
+  function addHazard(taskIndex: number) {
+    onChange(addNeboshHazard(form, taskIndex))
+  }
+
+  function removeHazard(taskIndex: number, hazardId: string) {
+    onChange(removeNeboshHazard(form, taskIndex, hazardId))
+  }
+
+  const panelBody = (
+    <div className="manual-review-panel__body">
+      <p className="muted xsmall" style={{ marginTop: 0 }}>
         {mrf.riskHint}
       </p>
       <div className="form" style={{ marginTop: '0.75rem' }}>
@@ -134,15 +178,23 @@ export function NeboshManualReview(props: {
                 onChange={(e) => patchTask(taskIndex, { taskTitle: e.target.value })}
               />
             </label>
-            {task.hazards.map((hazard, hazardIndex) => (
-              <div
-                key={hazard.id}
-                className="card"
-                style={{ padding: '0.65rem 0.85rem', marginTop: '0.5rem' }}
-              >
-                <p className="strong small" style={{ margin: '0 0 0.35rem' }}>
-                  {fillTemplate(mrf.hazardLegend, { ordinal: hazard.ordinal })}
-                </p>
+            {task.hazards.map((hazard, hazardIndex) => {
+              const score = neboshRiskScore(hazard.initialLikelihood, hazard.initialSeverity)
+              const band = neboshRiskBand(score)
+              return (
+              <div key={hazard.id} className="manual-review-hazard">
+                <div className="manual-review-hazard__head">
+                  <p className="strong small" style={{ margin: 0 }}>
+                    {fillTemplate(mrf.hazardLegend, { ordinal: hazard.ordinal })}
+                  </p>
+                  <button
+                    type="button"
+                    className="btn ghost small"
+                    onClick={() => removeHazard(taskIndex, hazard.id)}
+                  >
+                    {mrf.removeHazard}
+                  </button>
+                </div>
                 <label>
                   {mrf.operation}
                   <input
@@ -164,6 +216,44 @@ export function NeboshManualReview(props: {
                     }
                   />
                 </label>
+                <div className="manual-review-risk-row">
+                  <label>
+                    {mrf.likelihood}
+                    <ScaleSelect
+                      value={hazard.initialLikelihood}
+                      labels={NEBOSH_LIKELIHOOD_LABELS}
+                      onChange={(initialLikelihood) =>
+                        patchHazard(taskIndex, hazardIndex, { initialLikelihood })
+                      }
+                    />
+                  </label>
+                  <label>
+                    {mrf.severity}
+                    <ScaleSelect
+                      value={hazard.initialSeverity}
+                      labels={NEBOSH_SEVERITY_LABELS}
+                      onChange={(initialSeverity) =>
+                        patchHazard(taskIndex, hazardIndex, { initialSeverity })
+                      }
+                    />
+                  </label>
+                  <label>
+                    {mrf.riskLevel}
+                    <div
+                      className={`manual-review-risk-badge${band ? '' : ' manual-review-risk-badge--empty'}`}
+                      style={
+                        band
+                          ? {
+                              background: neboshCellColor(score),
+                              color: neboshCellTextColor(score),
+                            }
+                          : undefined
+                      }
+                    >
+                      {band ? `${score} · ${NEBOSH_RISK_BAND_LABELS[band]}` : '—'}
+                    </div>
+                  </label>
+                </div>
                 <label>
                   {mrf.whoAtRisk}
                   <input
@@ -196,8 +286,12 @@ export function NeboshManualReview(props: {
                     }
                   />
                 </label>
+                <AddPlusButton
+                  onClick={() => addHazard(taskIndex)}
+                  label={mr.addHazard}
+                />
               </div>
-            ))}
+            )})}
             <button
               type="button"
               className="btn ghost small"
@@ -300,6 +394,43 @@ export function NeboshManualReview(props: {
           ))}
         </fieldset>
       </div>
+    </div>
+  )
+
+  if (embedded) {
+    return (
+      <details
+        className="manual-review-panel manual-review-panel--embedded"
+        open={open}
+      >
+        <summary
+          onClick={(e) => {
+            e.preventDefault()
+            onOpenChange(!open)
+          }}
+        >
+          {mrf.riskTitle}
+        </summary>
+        {panelBody}
+      </details>
+    )
+  }
+
+  return (
+    <details
+      className="manual-review-panel card"
+      open={open}
+      style={{ marginTop: '0.85rem' }}
+    >
+      <summary
+        onClick={(e) => {
+          e.preventDefault()
+          onOpenChange(!open)
+        }}
+      >
+        {mrf.riskTitle}
+      </summary>
+      {panelBody}
     </details>
   )
 }

@@ -27,7 +27,9 @@
     "generate-tz-docx": "node scripts/generate-tz-docx.mjs"
   },
   "dependencies": {
+    "@lottiefiles/dotlottie-react": "^0.19.5",
     "firebase": "^12.12.1",
+    "lottie-react": "^2.4.1",
     "lottie-web": "^5.13.0",
     "mammoth": "^1.12.0",
     "pdf-lib": "^1.17.1",

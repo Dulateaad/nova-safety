@@ -1,14 +1,10 @@
-export type AiProvider = 'claude' | 'gemini' | 'auto'
+export type AiProvider = 'claude'
 
-/** Какой ИИ использовать в браузере (VITE_AI_PROVIDER или auto по ключам). */
+/** В приложении используется только Claude (Anthropic API). */
 export function resolveAiProvider(): AiProvider {
-  const raw = import.meta.env.VITE_AI_PROVIDER?.trim().toLowerCase()
-  if (raw === 'claude' || raw === 'gemini') return raw
-  if (import.meta.env.VITE_ANTHROPIC_API_KEY?.trim()) return 'claude'
-  if (import.meta.env.VITE_GEMINI_API_KEY?.trim()) return 'gemini'
   return 'claude'
 }
 
-export function aiProviderLabel(provider: AiProvider): string {
-  return provider === 'claude' ? 'Claude' : 'Gemini'
+export function aiProviderLabel(_provider: AiProvider = 'claude'): string {
+  return 'Claude'
 }

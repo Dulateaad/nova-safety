@@ -94,6 +94,26 @@ export type UiExtension = {
     titleEgovSign: string
     currently: string
   }
+  adminPage: {
+    title: string
+    subtitle: string
+    backJournal: string
+    adminLabel: string
+    activeBadge: string
+    exportExcel: string
+    personnelTitle: string
+    personnelHint: string
+    personnelEmpty: string
+    colName: string
+    colPosition: string
+    colRole: string
+    colDepartment: string
+    colAction: string
+    defaultDepartment: string
+    edit: string
+    firebaseOnlyHint: string
+    navLabel: string
+  }
   godMode: {
     title: string
     descriptionIntro: string
@@ -177,6 +197,9 @@ export type UiExtension = {
     responsible: string
     removeTask: string
     removeHazard: string
+    likelihood: string
+    severity: string
+    riskLevel: string
     crewNdprLegend: string
     signaturesLegend: string
   }
@@ -209,6 +232,23 @@ export type UiExtension = {
     demoSuffix: string
     documentAbrRisk: string
     inviteApproval: string
+  }
+  abrDailyAck: {
+    title: string
+    description: string
+    confirmation: string
+    todayPrefix: string
+    noSignaturesYet: string
+    signedProgress: string
+    notSignedToday: string
+    reportTitle: string
+    colDate: string
+    colName: string
+    colRole: string
+    colSignature: string
+    pendingTitle: string
+    pendingHint: string
+    openPermit: string
   }
   egovRoles: Record<EgovSignRole, string>
   specialWork: Record<SpecialWorkActivity, string>
@@ -284,6 +324,24 @@ export type UiExtension = {
     noPermissions: string
     fillTable: string
     tableFilled: string
+    panelTitle: string
+    panelHint: string
+    stepFill: string
+    stepSave: string
+    stepPdf: string
+    savedConfirm: string
+    editAgain: string
+    filledBadge: string
+    summaryTitle: string
+    openSection: string
+    addRow: string
+    emptyTable: string
+    colDateIssued: string
+    colWorkZone: string
+    colInstrument: string
+    colWorker: string
+    updatedLabel: string
+    ertFillsNote: string
   }
   preWorkCheck: {
     panelTitle: string
@@ -342,6 +400,8 @@ export type UiExtension = {
     viewRisk: string
     submitRequirementsAria: string
     waitAnalysis: string
+    tabManualFill: string
+    tabGenerate: string
   }
   ndprPage: {
     duplicateWorker: string
@@ -468,6 +528,7 @@ export type UiExtension = {
     signer2Permitter: string
     signer3Issuer: string
     signer4LeadExpert: string
+    signer5Ert: string
     ertApproverNote: string
     selectPlaceholder: string
     f02Legend: string
@@ -479,6 +540,7 @@ export type UiExtension = {
     endDateTime: string
     workersLegend: string
     workersHint: string
+    workersProducerHint: string
     addWorker: string
     workersEmptyHint: string
     fromUserList: string
@@ -720,6 +782,26 @@ export const uiExtRu: UiExtension = {
     titleEgovSign: 'Админка · подпись eGov',
     currently: 'Сейчас:',
   },
+  adminPage: {
+    title: 'Админ-панель',
+    subtitle: 'Пользователи, уведомления и настройки NOVA Safety',
+    backJournal: 'Журнал НД',
+    adminLabel: 'Администратор',
+    activeBadge: 'Активен',
+    exportExcel: 'Выгрузить в Excel',
+    personnelTitle: 'Справочник пользователей',
+    personnelHint: 'Учётные записи с ролями в системе наряд-допуска.',
+    personnelEmpty: 'Пользователи не найдены в Firestore.',
+    colName: 'ФИО',
+    colPosition: 'Должность',
+    colRole: 'Роль',
+    colDepartment: 'Подразделение',
+    colAction: 'Действие',
+    defaultDepartment: 'ТОО «Урал Ойл энд Газ»',
+    edit: 'Изменить',
+    firebaseOnlyHint: 'Расширенные настройки доступны при входе через Firebase.',
+    navLabel: 'Админ-панель',
+  },
   godMode: {
     title: 'Админка · GOD MODE',
     descriptionIntro: 'По последнему наряду в журнале: автоподпись',
@@ -749,11 +831,11 @@ export const uiExtRu: UiExtension = {
   },
   permissionsBody: {
     aiFillingSections: '{app} заполняет разделы 3–5…',
-    cardMeta: '{shortLabel} · разделы 1–3 заполняются здесь · газотест — ERT после выдачи',
+    cardMeta: '{shortLabel} · раздел 3 — производитель · газотест ERT — только огневые',
     pdfReady: 'PDF сформирован',
     pdfPending: 'Требуется формирование PDF',
     footerHint:
-      'Заполните форму и нажмите «Сформировать разрешение» для каждого вида работ. Газотесты вносит ПАС (ERT) на карточке наряда (после шага «Оценка риска») — данные сразу попадают в PDF разрешения и общий пакет.',
+      'Заполните форму и нажмите «Сформировать разрешение» для каждого вида работ. Раздел 3 заполняет производитель; газотест (раздел 2) — ПАС (ERT) только для огневых работ.',
   },
   pprPage: {
     backToChoice: '← Назад к выбору',
@@ -807,6 +889,9 @@ export const uiExtRu: UiExtension = {
     responsible: 'Ответственный',
     removeTask: 'Удалить задание',
     removeHazard: 'Удалить опасность',
+    likelihood: 'Вероятность',
+    severity: 'Тяжесть',
+    riskLevel: 'Уровень риска',
     crewNdprLegend: 'Бригада — состав из НДПР',
     signaturesLegend: 'Подписи и утверждение (4 роли из НДПР)',
   },
@@ -840,12 +925,31 @@ export const uiExtRu: UiExtension = {
     documentAbrRisk: 'АБР + оценка риска',
     inviteApproval: 'Согласование НДПР',
   },
+  abrDailyAck: {
+    title: 'Ежедневное ознакомление с АБР',
+    description:
+      'АБР подписывают только работники бригады: каждый день им приходит задание подписать ознакомление через eGov Mobile. Подпись действительна 24 часа; по истечении суток требуется повторная подпись. В отчёте фиксируются ФИО, должность и подпись.',
+    confirmation: 'Я ознакомлен(а) с АБР на текущую смену',
+    todayPrefix: 'Сейчас',
+    noSignaturesYet: 'пока нет действующих подписей',
+    signedProgress: '{signed} из {total} · ожидают {pending}',
+    notSignedToday: 'нет действующей подписи (не подписал или прошло более 24 ч)',
+    reportTitle: 'Журнал ежедневных подписей',
+    colDate: 'Дата',
+    colName: 'Ф.И.О.',
+    colRole: 'Должность',
+    colSignature: 'Подпись',
+    pendingTitle: 'Требуется ежедневное ознакомление с АБР',
+    pendingHint:
+      'Каждый день работникам бригады приходит задание подписать ознакомление с АБР. Подпись действует 24 часа, затем нужна повторная подпись.',
+    openPermit: 'Открыть наряд',
+  },
   egovRoles: {
     performer: 'Начальник участка (составитель)',
     permitter: 'Допускающий',
     issuer: 'Выдающий НД',
     leadExpert: 'Утверждающий НД',
-    ert: 'ERT (ПАС)',
+    ert: 'ПАС (Пожарно-аварийная служба)',
   },
   specialWork: specialWorkRu,
   workPermissionKinds: {
@@ -922,8 +1026,27 @@ export const uiExtRu: UiExtension = {
     rejectedHint: 'Наряд отклонён. Дождитесь повторной выдачи после исправлений.',
     editHint: 'Редактирование доступно для наряда на согласовании, выданного, выполняемого или приостановленного (сейчас: {status}).',
     noPermissions: 'Разрешения на особые работы ещё не сформированы — дождитесь PDF от производителя работ.',
-    fillTable: 'Заполните таблицу газотеста (раздел 2 в PDF): нажмите «Добавить замер», укажите LEL, H2S, O₂, CO и № прибора. Осталось разрешений без замеров: {empty}.',
-    tableFilled: 'Таблица газотеста заполнена. При необходимости добавьте повторный замер кнопкой «+ Добавить замер».',
+    fillTable: 'Заполните таблицу газотеста (раздел 2 в PDF): нажмите «+ Добавить», укажите LEL, H2S, O₂, CO и № прибора. Осталось разрешений без замеров: {empty}.',
+    tableFilled: 'Таблица газотеста заполнена. При необходимости добавьте повторный замер кнопкой «+ Добавить».',
+    panelTitle: '2. Результаты отбора проб воздушной среды',
+    panelHint:
+      'Заполните таблицу газотеста (раздел 2 в PDF разрешения). После сохранения данные попадут в PDF и пакет согласования.',
+    stepFill: 'Нажмите «+ Добавить», укажите дату оформления, рабочую зону, LEL, H₂S, O₂, CO и № прибора.',
+    stepSave: 'Нажмите «Сохранить газотест» — PDF разрешения обновится автоматически.',
+    stepPdf: 'Откройте PDF разрешения и проверьте таблицу в разделе 2.',
+    savedConfirm: 'Раздел 2 сохранён. Таблица газотеста заполнена.',
+    editAgain: 'Изменить газотест',
+    filledBadge: 'Заполнено',
+    summaryTitle: '2. Разрешения — газотест',
+    openSection: 'Открыть газотест',
+    addRow: '+ Добавить',
+    emptyTable: 'Таблица пустая. Нажмите «+ Добавить» и укажите результаты замера.',
+    colDateIssued: 'Дата оформления',
+    colWorkZone: 'Рабочая зона',
+    colInstrument: 'Рег. №',
+    colWorker: 'Работник',
+    updatedLabel: 'Обновлён',
+    ertFillsNote: ' · заполняет ПАС (ERT)',
   },
   preWorkCheck: {
     panelTitle: 'Раздел 3 — проверки на рабочем месте',
@@ -945,8 +1068,8 @@ export const uiExtRu: UiExtension = {
     fillChecks:
       'Заполните раздел 3 (проверки на рабочем месте) в разрешениях. Осталось без проверок: {empty}.',
     checksFilled: 'Раздел 3 заполнен.',
-    tasksTitle: 'Задание: проверки на рабочем месте (допускающий)',
-    tasksHint: 'Наряды с незаполненным разделом 3 в разрешениях на особые работы.',
+    tasksTitle: 'Задание: проверки на рабочем месте (производитель)',
+    tasksHint: 'Наряды с незаполненным разделом 3 в разрешениях — заполните и сохраните в PDF.',
     openChecks: 'Открыть проверки',
     savedConfirm: 'Раздел 3 сохранён. Проверки на рабочем месте заполнены.',
     editAgain: 'Изменить проверки',
@@ -986,6 +1109,8 @@ export const uiExtRu: UiExtension = {
     viewRisk: 'Посмотреть оценку риска',
     submitRequirementsAria: 'Условия отправки на согласование',
     waitAnalysis: 'Дождитесь анализа или нажмите «Далее — НДПР».',
+    tabManualFill: 'Заполнить вручную',
+    tabGenerate: 'Сформировать',
   },
   ndprPage: {
     duplicateWorker: 'Один и тот же работник не может быть указан в двух строках.',
@@ -1115,8 +1240,9 @@ export const uiExtRu: UiExtension = {
     signer2Permitter: '2. Допускающий',
     signer3Issuer: '3. Выдающий НД',
     signer4LeadExpert: '4. Утверждающий НД',
+    signer5Ert: '5. ERT (ПАС)',
     ertApproverNote:
-      'Для выбранных видов работ (огневые, газоопасные, замкнутое пространство) в согласование автоматически добавляется ERT (ПАС) с газотестом.',
+      'При разрешении на огневые работы в согласование автоматически добавляется ПАС с газотестом (раздел 2 PDF).',
     selectPlaceholder: '— Выберите —',
     f02Legend: 'Бланк НД — общие поля (F02)',
     badgeNo: '№ пропуска / бейджа',
@@ -1128,6 +1254,7 @@ export const uiExtRu: UiExtension = {
     workersLegend: 'Работники',
     workersHint:
       'Строки F03 — укажите минимум {min} работников из справочника (ФИО попадут в АБР, оценку риска и НДПР): {names}.',
+    workersProducerHint: 'Выберите работников из списка (минимум {min}).',
     addWorker: '+ Добавить работника',
     workersEmptyHint:
       'Нажмите «+ Добавить работника», чтобы указать состав бригады (минимум {min}).',
@@ -1141,7 +1268,7 @@ export const uiExtRu: UiExtension = {
     selectedCount: '{count} выбрано',
     permissionsRequired: 'Требуются разрешения',
     hint: '{app} определит виды по исходному документу. Двойной щелчок по строке снимает галочку.',
-    fireNote: 'Огневой наряд · категория 1 · дополнительно согласует ERT Nash (ПАС)',
+    fireNote: 'Разрешения на огневые работы',
   },
   riskForm: {
     clearForm: 'Очистить анкету',
@@ -1233,7 +1360,7 @@ export const uiExtRu: UiExtension = {
     riskNotGenerated: 'Сформируйте «{risk}» из исходного документа перед отправкой.',
     riskEmpty: 'Сформируйте «{risk}» из исходного документа — реестр опасностей пуст.',
     pprPdfGemini:
-      'Текст из PDF извлекается через Gemini при загрузке файла на шаге «{source}».',
+      'Текст из PDF извлекается через Claude Haiku при загрузке файла на шаге «{source}».',
     pprWordOnly:
       'Поддерживаются только документы Word (.doc, .docx) для извлечения мер контроля.',
     pprExtractFailed: 'Не удалось извлечь текст из документа — файл пуст или повреждён.',
@@ -1296,7 +1423,7 @@ export const uiExtRu: UiExtension = {
       },
       {
         title: 'Специальные разрешения',
-        desc: 'Для газоопасных, огневых работ и работ в замкнутых пространствах формируется разрешение с блоком Live-газтеста.',
+        desc: 'Для газоопасных, огневых и замкнутых работ формируется отдельное разрешение; газотест ERT — только при огневых.',
       },
       {
         title: 'Ознакомление бригады',
@@ -1457,6 +1584,26 @@ export const uiExtEn: UiExtension = {
     titleEgovSign: 'Admin · eGov signing',
     currently: 'Currently:',
   },
+  adminPage: {
+    title: 'Admin panel',
+    subtitle: 'Users, notifications and NOVA Safety settings',
+    backJournal: 'PTW journal',
+    adminLabel: 'Administrator',
+    activeBadge: 'Active',
+    exportExcel: 'Export to Excel',
+    personnelTitle: 'User directory',
+    personnelHint: 'Accounts and roles in the permit-to-work system.',
+    personnelEmpty: 'No users found in Firestore.',
+    colName: 'Name',
+    colPosition: 'Position',
+    colRole: 'Role',
+    colDepartment: 'Department',
+    colAction: 'Action',
+    defaultDepartment: 'Ural Oil & Gas LLP',
+    edit: 'Edit',
+    firebaseOnlyHint: 'Advanced settings are available with Firebase sign-in.',
+    navLabel: 'Admin panel',
+  },
   godMode: {
     title: 'Admin · GOD MODE',
     descriptionIntro: 'For the latest journal permit: auto-sign',
@@ -1544,6 +1691,9 @@ export const uiExtEn: UiExtension = {
     responsible: 'Responsible',
     removeTask: 'Remove task',
     removeHazard: 'Remove hazard',
+    likelihood: 'Likelihood',
+    severity: 'Severity',
+    riskLevel: 'Risk level',
     crewNdprLegend: 'Crew — from work permit',
     signaturesLegend: 'Signatures and approval (4 WP roles)',
   },
@@ -1576,6 +1726,25 @@ export const uiExtEn: UiExtension = {
     demoSuffix: 'demo',
     documentAbrRisk: 'JSA + risk assessment',
     inviteApproval: 'Work permit approval',
+  },
+  abrDailyAck: {
+    title: 'Daily JSA acknowledgment',
+    description:
+      'Only crew members sign the JSA: each day they receive a task to sign acknowledgment via eGov Mobile. A signature is valid for 24 hours; after that, a new signature is required. The report records full name, role, and signature.',
+    confirmation: 'I acknowledge the JSA for today’s shift',
+    todayPrefix: 'Now',
+    noSignaturesYet: 'no valid signatures yet',
+    signedProgress: '{signed} of {total} · pending {pending}',
+    notSignedToday: 'no valid signature (unsigned or older than 24 h)',
+    reportTitle: 'Daily signature log',
+    colDate: 'Date',
+    colName: 'Full name',
+    colRole: 'Role',
+    colSignature: 'Signature',
+    pendingTitle: 'Daily JSA acknowledgment required',
+    pendingHint:
+      'Each day crew members receive a task to sign JSA acknowledgment. Each signature is valid for 24 hours, then must be renewed.',
+    openPermit: 'Open permit',
   },
   egovRoles: {
     performer: 'Site supervisor (preparer)',
@@ -1659,8 +1828,27 @@ export const uiExtEn: UiExtension = {
     rejectedHint: 'Permit rejected. Wait for re-issue after corrections.',
     editHint: 'Editing available for on approval, issued, in progress or suspended permits (now: {status}).',
     noPermissions: 'Special work permissions not generated yet — wait for PDF from supervisor.',
-    fillTable: 'Fill gas test table (section 2 in PDF): click «Add reading», enter LEL, H₂S, O₂, CO and instrument No. Permissions without readings: {empty}.',
-    tableFilled: 'Gas test table complete. Add repeat readings with «+ Add reading» if needed.',
+    fillTable: 'Fill gas test table (section 2 in PDF): click «+ Add», enter LEL, H₂S, O₂, CO and instrument No. Permissions without readings: {empty}.',
+    tableFilled: 'Gas test table complete. Add repeat readings with «+ Add» if needed.',
+    panelTitle: 'Section 2 — air sampling results',
+    panelHint:
+      'Fill the gas test table (section 2 in the permission PDF). After saving, data is written to the PDF and approval package.',
+    stepFill: 'Click «+ Add», enter issue date, work zone, LEL, H₂S, O₂, CO and instrument No.',
+    stepSave: 'Click «Save gas test» — the permission PDF updates automatically.',
+    stepPdf: 'Open the permission PDF and verify section 2.',
+    savedConfirm: 'Section 2 saved. Gas test table is complete.',
+    editAgain: 'Edit gas test',
+    filledBadge: 'Complete',
+    summaryTitle: '2. Permissions — gas test',
+    openSection: 'Open gas test',
+    addRow: '+ Add',
+    emptyTable: 'Table is empty. Click «+ Add» and enter measurement results.',
+    colDateIssued: 'Issue date',
+    colWorkZone: 'Work zone',
+    colInstrument: 'Reg. No.',
+    colWorker: 'Worker',
+    updatedLabel: 'Updated',
+    ertFillsNote: ' · filled by ERT',
   },
   preWorkCheck: {
     panelTitle: 'Section 3 — workplace checks',
@@ -1682,8 +1870,8 @@ export const uiExtEn: UiExtension = {
     fillChecks:
       'Fill section 3 (workplace checks) in permissions. Remaining without checks: {empty}.',
     checksFilled: 'Section 3 complete.',
-    tasksTitle: 'Task: workplace checks (permitter)',
-    tasksHint: 'Permits with unfilled section 3 in special work permissions.',
+    tasksTitle: 'Task: workplace checks (work supervisor)',
+    tasksHint: 'Permits with unfilled section 3 in permissions — complete and save to PDF.',
     openChecks: 'Open checks',
     savedConfirm: 'Section 3 saved. Workplace checks are complete.',
     editAgain: 'Edit checks',
@@ -1723,6 +1911,8 @@ export const uiExtEn: UiExtension = {
     viewRisk: 'View risk assessment',
     submitRequirementsAria: 'Submission requirements',
     waitAnalysis: 'Wait for analysis or click «Next — Work permit».',
+    tabManualFill: 'Fill manually',
+    tabGenerate: 'Generate',
   },
   ndprPage: {
     duplicateWorker: 'The same worker cannot appear in two rows.',
@@ -1852,8 +2042,9 @@ export const uiExtEn: UiExtension = {
     signer2Permitter: '2. Area authority',
     signer3Issuer: '3. Issuing authority',
     signer4LeadExpert: '4. Lead expert',
+    signer5Ert: '5. ERT (PAS)',
     ertApproverNote:
-      'For selected work types (hot work, gas-hazard, confined space), ERT (PAS) with gas test is added to approval automatically.',
+      'For hot work permits, PAS with gas test is added to approval automatically.',
     selectPlaceholder: '— Select —',
     f02Legend: 'WP form — common fields (F02)',
     badgeNo: 'Pass / badge No.',
@@ -1865,6 +2056,7 @@ export const uiExtEn: UiExtension = {
     workersLegend: 'Workers',
     workersHint:
       'F03 rows — specify at least {min} workers from directory (names appear in JSA, risk assessment and WP): {names}.',
+    workersProducerHint: 'Select crew members from the list (minimum {min}).',
     addWorker: '+ Add worker',
     workersEmptyHint:
       'Click «+ Add worker» to specify crew (minimum {min}).',
@@ -1878,7 +2070,7 @@ export const uiExtEn: UiExtension = {
     selectedCount: '{count} selected',
     permissionsRequired: 'Permissions required',
     hint: '{app} infers types from the source document. Double-click a row to uncheck.',
-    fireNote: 'Hot work permit · category 1 · additionally approved by ERT Nash (PAS)',
+    fireNote: 'Hot work permits',
   },
   riskForm: {
     clearForm: 'Clear form',
@@ -1968,7 +2160,7 @@ export const uiExtEn: UiExtension = {
     riskNotGenerated: 'Generate «{risk}» from source document before submitting.',
     riskEmpty: 'Generate «{risk}» from source document — hazard register is empty.',
     pprPdfGemini:
-      'PDF text is extracted via Gemini when uploading the file on «{source}» step.',
+      'PDF text is extracted via Claude Haiku when uploading the file on «{source}» step.',
     pprWordOnly: 'Only Word documents (.doc, .docx) are supported for control measure extraction.',
     pprExtractFailed: 'Could not extract text — file is empty or corrupted.',
   },

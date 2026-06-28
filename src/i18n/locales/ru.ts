@@ -219,6 +219,11 @@ export type Locale = {
     filterClosed: string
     searchPlaceholder: string
     filtersBtn: string
+    tabIssued: string
+    tabArchive: string
+    tabSearch: string
+    exportExcel: string
+    openAdmin: string
   }
   status: Record<PermitStatus, string>
   pages: {
@@ -373,18 +378,18 @@ export const ru: Locale = {
   signing: {
     stepPrefix: 'Шаг',
     action: {
-      performer: 'Заполнил НДПР',
-      permitter: 'Допустил',
-      issuer: 'Выдал',
-      leadExpert: 'Утвердил',
-      ert: 'Согласовал (ERT)',
+      performer: 'Заполнение НДПР',
+      ert: 'Согласование (ERT)',
+      issuer: 'Выдача',
+      permitter: 'Допуск',
+      leadExpert: 'Утверждение',
     },
     caption: {
       performer: 'Производитель работ',
       permitter: 'Допускающий',
       issuer: 'Выдающий НД',
       leadExpert: 'Утверждающий НД',
-      ert: 'ERT Nash (ПАС)',
+      ert: 'ПАС (Пожарно-аварийная служба)',
     },
     crewBlocked: 'Ожидается ознакомление работников бригады с АБР и оценкой риска.',
     signaturesTitle: 'Подписи и согласования (ЭЦП)',
@@ -393,7 +398,7 @@ export const ru: Locale = {
     waitingFirst: 'Сначала завершите {step}',
   },
   signingUi: {
-    signed: 'Подписано',
+    signed: 'Согласовано ЭЦП',
     rejected: 'Отклонено',
     cancelled: 'Отменено',
     awaitingEsigh: 'Ожидает ЭЦП',
@@ -423,7 +428,7 @@ export const ru: Locale = {
     flowStandard:
       '1) Производитель подписывает НДПР → 2) работники ознакомляются → 3) согласующие (выдающий, допускающий, утверждающий).',
     flowFire:
-      '1) Производитель подписывает НДПР → 2) работники ознакомляются → 3) согласующие (ERT Nash с газотестом, выдающий, допускающий, утверждающий) — для огневых, газоопасных и замкнутых работ.',
+      '1) Производитель подписывает НДПР → 2) работники ознакомляются → 3) согласующие (при огневых — ERT Nash с газотестом, выдающий, допускающий, утверждающий).',
     crewStep: 'Шаг 2: Ознакомление работников бригады с АБР и оценкой риска',
     crewSection: 'Работники — ознакомление с АБР и оценкой рисков',
     crewAfterProducer: 'После подписи производителя',
@@ -519,6 +524,11 @@ export const ru: Locale = {
     filterClosed: 'Закрытые',
     searchPlaceholder: 'Поиск по объекту или теме…',
     filtersBtn: 'Фильтры',
+    tabIssued: 'Выданные НД',
+    tabArchive: 'Архив НД',
+    tabSearch: 'Поиск и фильтрация',
+    exportExcel: 'Выгрузить в Excel',
+    openAdmin: 'Админ-панель',
   },
   status: {
     draft: 'Черновик',
@@ -595,7 +605,7 @@ export const ru: Locale = {
     coordinator: 'Координатор НД / админ',
     contractor: 'Подрядчик',
     safety: 'Инспектор по ОТ, ТБ и ООС',
-    ert: 'Emergency Response Team',
+    ert: 'ПАС (Пожарно-аварийная служба)',
     leadExpert: 'Утверждающий НД',
   },
   ...uiRestRu,

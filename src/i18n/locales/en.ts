@@ -241,6 +241,11 @@ export const en: Locale = {
     filterClosed: 'Closed',
     searchPlaceholder: 'Search by site or topic…',
     filtersBtn: 'Filters',
+    tabIssued: 'Issued permits',
+    tabArchive: 'Archive',
+    tabSearch: 'Search & filter',
+    exportExcel: 'Export to Excel',
+    openAdmin: 'Admin panel',
   },
   status: {
     draft: 'Draft',

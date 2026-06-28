@@ -17,8 +17,8 @@ import {
   sanitizeToolsAndEquipmentItem,
 } from './toolsAndEquipmentFormat'
 import { matchPtwSiteFromText } from '../config/ptwSites'
-import { buildPprTextHaystack } from './inferSpecialWorkActivityFromPpr'
-import { inferContractorOrgFromPpr } from './inferContractorOrgFromPpr'
+import { buildPprTextHaystack, inferSpecialWorkActivitiesFromPpr } from './inferSpecialWorkActivityFromPpr'
+import { inferContractorOrgFromPpr, inferCustomerOrgFromPpr } from './inferContractorOrgFromPpr'
 import { normalizePprWorkTitle } from './narjadTitle'
 
 function sliceBetweenAt(
@@ -315,12 +315,22 @@ export function enrichPprNdprFieldsSync(ppr: PprForm): PprForm {
   if (!contractorOrg) {
     contractorOrg = inferContractorOrgFromPpr(ppr)
   }
+  let customerOrg = ppr.customerOrg.trim()
+  if (!customerOrg) {
+    customerOrg = inferCustomerOrgFromPpr(ppr)
+  }
+  let specialWorkActivities = ppr.specialWorkActivities.filter(Boolean)
+  if (!specialWorkActivities.length) {
+    specialWorkActivities = inferSpecialWorkActivitiesFromPpr(ppr)
+  }
 
   return {
     ...ppr,
     workTitle: title || ppr.workTitle,
     siteName,
     contractorOrg,
+    customerOrg,
+    specialWorkActivities,
     workDescription: '',
     workVolume: '',
     workStagesText,

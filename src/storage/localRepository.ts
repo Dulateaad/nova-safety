@@ -33,8 +33,10 @@ import { inspectorAssigneesForPermit } from '../lib/inspectorAccess'
 import { DEFAULT_INSPECTOR_SETTINGS } from '../lib/inspectorSettings'
 import {
   resolveLocalWorkStopAlerts,
+  removeLocalWorkStopAlertsForPermits,
   upsertLocalWorkStopAlerts,
 } from '../lib/workStopAlerts'
+import { removeLocalPermitNoticesForPermits } from '../lib/permitNotices'
 
 const STORAGE_KEY = 'nova_safety_local_v1'
 
@@ -94,10 +96,11 @@ export function seedDemoPermitIfEmpty() {
     workStages: 'Подготовка площадки\nОгневые работы\nКонтроль после работ',
     workVolume: '1 смена, участок 12 м²',
     toolsAndEquipment: 'Болгарка, сварочный аппарат.',
-    issuerUid: 'u-performer-5',
+    issuerUid: 'u-issuer-temirlan',
     permitterUid: 'u-permitter',
-    performerUid: 'u-performer',
+    performerUid: 'u-performer-abylay',
     leadExpertUid: 'u-lead',
+    ertUid: 'u-ert',
     isContractorPermit: false,
     samePersonException: { allowed: false, reason: '' },
     registrationRefNo: '001',
@@ -484,14 +487,19 @@ export class LocalPermitRepository implements PermitRepository {
     s.permits = s.permits.filter((p) => p.id !== id)
     s.journal = s.journal.filter((j) => j.permitId !== id)
     saveShape(s)
+    removeLocalPermitNoticesForPermits([id])
+    removeLocalWorkStopAlertsForPermits([id])
     notify()
   }
 
   async deleteAllPermits(_actor: DemoUser): Promise<void> {
     const s = loadShape()
+    const permitIds = s.permits.map((p) => p.id)
     s.permits = []
     s.journal = []
     saveShape(s)
+    removeLocalPermitNoticesForPermits(permitIds)
+    removeLocalWorkStopAlertsForPermits(permitIds)
     notify()
   }
 

@@ -24,6 +24,7 @@ import { mergeExecutorPatch } from '../lib/mergeExecutorPatch'
 import { migratePermit } from './normalizePermit'
 import { resolveRegistrationRefNo } from '../lib/registrationNumber'
 import { deleteSigningInvitesForPermit, deleteSigningInvitesForPermits } from '../lib/deletePermitInvites'
+import { cleanupPermitRelatedDataClient } from '../lib/cleanupPermitRelatedData'
 import { coercePtwSite } from '../config/ptwSites'
 import { coerceZoneClass, coerceSpecialWorkActivity, applySpecialWorkActivity, normalizeSpecialWorkActivities, primarySpecialWorkActivity } from '../types/domain'
 import { pprForFirestore } from '../lib/pprAutosave'
@@ -291,6 +292,19 @@ export class FirestorePermitRepository implements PermitRepository {
         }),
       )
     }
+    if (patch.abrDailyAcks !== undefined) {
+      await addDoc(
+        this.journalCol(id),
+        forFirestore({
+          permitId: id,
+          atIso: nowIso(),
+          actorUid: actor.id,
+          actorRole: actor.role,
+          kind: 'info',
+          message: 'Ежедневное ознакомление с АБР',
+        }),
+      )
+    }
     if (patch.lastRejection) {
       await addDoc(
         this.journalCol(id),
@@ -453,9 +467,14 @@ export class FirestorePermitRepository implements PermitRepository {
     batch.delete(doc(this.fs, 'permits', id))
     await batch.commit()
     try {
-      await deleteSigningInvitesForPermit(this.fs, id)
+      await cleanupPermitRelatedDataClient([id])
     } catch (e) {
-      console.warn('[NOVA] Не удалось удалить signingInvites для наряда', id, e)
+      console.warn('[NOVA] Не удалось очистить задания ролей для наряда', id, e)
+      try {
+        await deleteSigningInvitesForPermit(this.fs, id)
+      } catch (fallbackError) {
+        console.warn('[NOVA] Не удалось удалить signingInvites для наряда', id, fallbackError)
+      }
     }
   }
 
@@ -469,10 +488,16 @@ export class FirestorePermitRepository implements PermitRepository {
       batch.delete(permitDoc.ref)
       await batch.commit()
     }
+    if (permitIds.length === 0) return
     try {
-      await deleteSigningInvitesForPermits(this.fs, permitIds)
+      await cleanupPermitRelatedDataClient(permitIds)
     } catch (e) {
-      console.warn('[NOVA] Не удалось удалить signingInvites при очистке журнала', e)
+      console.warn('[NOVA] Не удалось очистить задания ролей при очистке журнала', e)
+      try {
+        await deleteSigningInvitesForPermits(this.fs, permitIds)
+      } catch (fallbackError) {
+        console.warn('[NOVA] Не удалось удалить signingInvites при очистке журнала', fallbackError)
+      }
     }
   }
 

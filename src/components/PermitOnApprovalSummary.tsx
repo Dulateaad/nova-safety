@@ -2,10 +2,10 @@ import type { ReactNode } from 'react'
 import type { Permit } from '../types/domain'
 import type { DemoUser } from '../types/domain'
 import {
-  approverSigningRoles,
-  approvalStepLabel,
   isCrewAckPhaseActive,
   nextRoleToSign,
+  signingRoleOrder,
+  approvalStepLabel,
 } from '../lib/approvalSequence'
 import { isRoleSigned } from '../lib/signatureStatus'
 import { buildPermitCrewRows } from '../lib/permitCrewRows'
@@ -31,11 +31,11 @@ function stepStatus(
   rejected: boolean,
   isRejectedStep: boolean,
 ): string {
-  if (signed) return 'Подписано'
+  if (signed) return 'Согласовано ЭЦП'
   if (isRejectedStep) return 'Отклонено'
   if (rejected) return 'Отменено'
   if (active) return 'Сейчас'
-  return 'Ожидает'
+  return 'Ожидает ЭЦП'
 }
 
 export function PermitOnApprovalSummary({
@@ -51,6 +51,7 @@ export function PermitOnApprovalSummary({
   const rejected = isPermitSigningRejected(permit)
   const rejectedRole = rejectionSignerRole(permit)
   const performerSigned = isRoleSigned(permit, 'performer')
+  const signingRoles = signingRoleOrder(permit)
 
   const inner = (
     <div className={variant === 'inline' ? 'permit-approval-summary permit-approval-summary--inline' : 'permit-approval-summary'}>
@@ -64,17 +65,19 @@ export function PermitOnApprovalSummary({
       <div className="permit-approval-summary__block">
         <h3 className="permit-approval-summary__title">Согласование</h3>
         <p className="muted small" style={{ marginTop: 0 }}>
-          1) Производитель подписывает НДПР → 2) работники ознакомляются → 3) согласующие
-          {approverSigningRoles(permit).includes('ert')
-            ? ' (ERT Nash, выдающий, допускающий, утверждающий)'
-            : ' (выдающий, допускающий, утверждающий)'}
+          Очередь подписания ЭЦП:{' '}
+          {signingRoles
+            .map((role) => approvalStepLabel(role, permit, resolveUser).replace(/^Шаг \d+: /, ''))
+            .join(' → ')}
           .
         </p>
         <ol className="permit-approval-summary__steps">
-          {(['performer'] as const).map((role) => {
+          {signingRoles.map((role) => {
             const signed = isRoleSigned(permit, role)
             const active = !rejected && currentStep === role
             const isRejectedStep = rejected && rejectedRole === role
+            const blockedByCrew =
+              !signed && role !== 'performer' && performerSigned && crewPhase
             return (
               <li
                 key={role}
@@ -92,57 +95,9 @@ export function PermitOnApprovalSummary({
                   {approvalStepLabel(role, permit, resolveUser)}
                 </span>
                 <span className="permit-approval-summary__step-status">
-                  {stepStatus(signed, active, rejected, isRejectedStep)}
-                </span>
-              </li>
-            )
-          })}
-          <li
-            className={[
-              'permit-approval-summary__step',
-              !crewPhase && performerSigned && crew.every((r) => r.acknowledged)
-                ? 'is-signed'
-                : '',
-              crewPhase ? 'is-active' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-          >
-            <span className="permit-approval-summary__step-label">
-              Шаг 2: Ознакомление работников бригады с АБР и оценкой риска
-            </span>
-            <span className="permit-approval-summary__step-status">
-              {!performerSigned
-                ? 'После подписи производителя'
-                : crewPhase
-                  ? 'Сейчас'
-                  : crew.length === 0
-                    ? 'Не требуется'
-                    : 'Завершено'}
-            </span>
-          </li>
-          {approverSigningRoles(permit).map((role, idx) => {
-            const signed = isRoleSigned(permit, role)
-            const active = !rejected && currentStep === role
-            const isRejectedStep = rejected && rejectedRole === role
-            return (
-              <li
-                key={role}
-                className={[
-                  'permit-approval-summary__step',
-                  signed ? 'is-signed' : '',
-                  active ? 'is-active' : '',
-                  isRejectedStep ? 'is-rejected' : '',
-                  rejected && !signed && !isRejectedStep ? 'is-cancelled' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-              >
-                <span className="permit-approval-summary__step-label">
-                  Шаг {idx + 3}: {approvalStepLabel(role, permit, resolveUser).replace(/^Шаг \d+: /, '')}
-                </span>
-                <span className="permit-approval-summary__step-status">
-                  {stepStatus(signed, active, rejected, isRejectedStep)}
+                  {blockedByCrew
+                    ? 'После ознакомления бригады'
+                    : stepStatus(signed, active, rejected, isRejectedStep)}
                 </span>
               </li>
             )

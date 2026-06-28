@@ -11,7 +11,6 @@ import { firebaseConfigured, firestoreOfflineCache } from '../lib/firebase'
 import { preloadPdfMakeEngine } from '../lib/pdfMakeEngine'
 import { AppLogo } from './AppLogo'
 import { LanguageToggle } from './LanguageToggle'
-import { LoadingTipsSplash } from './LoadingTipsSplash'
 import { scrollAppToTop } from '../lib/scrollAppToTop'
 import {
   disablePushOnSignOut,
@@ -72,7 +71,7 @@ function NavItem(props: {
   end?: boolean
   label: string
   tab?: string
-  icon?: 'journal' | 'new' | 'ppr' | 'asor' | 'matrix' | 'certificates' | 'permissions' | 'permissions' | 'help'
+  icon?: 'journal' | 'new' | 'ppr' | 'asor' | 'matrix' | 'certificates' | 'permissions' | 'help' | 'admin'
   variant: 'header' | 'sidebar' | 'tab' | 'tab'
   gatesTick: number
   user: DemoUser | null
@@ -256,7 +255,6 @@ export function Layout() {
 
   return (
     <div className={`app-shell${sidebarOpen ? ' app-shell--sidebar-open' : ''}`}>
-      <LoadingTipsSplash />
 
       <aside
         className="app-sidebar"
@@ -270,7 +268,7 @@ export function Layout() {
           aria-label={t.layout.homeAria}
           onClick={closeSidebarOnMobile}
         >
-          <AppLogo className="brand-mark__logo--sidebar" />
+          <AppLogo className="brand-mark__logo--sidebar" variant="sidebar" />
         </NavLink>
 
         <nav className="sidebar-nav">
@@ -288,6 +286,18 @@ export function Layout() {
               onNavigate={closeSidebarOnMobile}
             />
           ))}
+          {user.role === 'coordinator' ? (
+            <NavItem
+              to="/admin"
+              label={t.adminPage.navLabel}
+              tab={t.adminPage.navLabel}
+              icon="admin"
+              variant="sidebar"
+              gatesTick={gatesTick}
+              user={user}
+              onNavigate={closeSidebarOnMobile}
+            />
+          ) : null}
           <NavLink
             to="/help"
             className={({ isActive }) =>
@@ -405,33 +415,6 @@ export function Layout() {
               )}
             </div>
           </div>
-
-          <NavLink
-            to="/"
-            end
-            className="brand brand--home top-bar__center-brand"
-            aria-label={t.layout.homeAria}
-          >
-            <span className="top-bar__orbit top-bar__orbit--a" aria-hidden>
-              <span className="top-bar__particle top-bar__particle--1" />
-              <span className="top-bar__particle top-bar__particle--2" />
-              <span className="top-bar__particle top-bar__particle--3" />
-              <span className="top-bar__particle top-bar__particle--4" />
-            </span>
-            <span className="top-bar__orbit top-bar__orbit--b" aria-hidden>
-              <span className="top-bar__particle top-bar__particle--5" />
-              <span className="top-bar__particle top-bar__particle--6" />
-              <span className="top-bar__particle top-bar__particle--7" />
-              <span className="top-bar__particle top-bar__particle--8" />
-            </span>
-            <span className="top-bar__orbit top-bar__orbit--c" aria-hidden>
-              <span className="top-bar__particle top-bar__particle--9" />
-              <span className="top-bar__particle top-bar__particle--10" />
-              <span className="top-bar__particle top-bar__particle--11" />
-              <span className="top-bar__particle top-bar__particle--12" />
-            </span>
-            <AppLogo className="brand-mark__logo--header top-bar__logo" />
-          </NavLink>
         </header>
 
         {firebaseConfigured && !online && (

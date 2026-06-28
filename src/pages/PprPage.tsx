@@ -13,6 +13,7 @@ import {
   type PprExtractStage,
 } from '../lib/extractPprControlMeasures'
 import { extractTextFromPprAttachment } from '../lib/pprDocText'
+import { isPdfAttachment } from '../lib/pprGeminiPdfExtract'
 import { titleFromFileName } from '../lib/pprAttachment'
 import { effectivePprWorkTitle, isLikelyFileNameTitle, normalizePprWorkTitle } from '../lib/narjadTitle'
 import { clearPackageSession } from '../lib/packageSession'
@@ -30,8 +31,6 @@ import {
   applyNdprExtractToPprForm,
   applyPprToNdprSession,
 } from '../lib/pprNdprExtract'
-import { applyLinkedCertificatesToPpr } from '../lib/matchUogCertificates'
-import { uogCertificateById, uogCertificateLabel } from '../config/uogCertificates'
 import {
   pprExtractProgressCeiling,
   pprExtractProgressLabel,
@@ -129,7 +128,7 @@ export function PprPage() {
 
   useEffect(() => {
     const att = form.attachment
-    if (!att?.dataBase64 || fillMode !== 'ppr') return
+    if (!att?.dataBase64 || fillMode !== 'ppr' || isPdfAttachment(att)) return
     let cancelled = false
     void extractTextFromPprAttachment(att)
       .then((docText) => {
@@ -191,7 +190,6 @@ export function PprPage() {
         if (ndprExtract) {
           next = applyNdprExtractToPprForm(next, ndprExtract)
         }
-        next = applyLinkedCertificatesToPpr(next)
 
         setForm(next)
         setExtractStage(null)
@@ -343,21 +341,6 @@ export function PprPage() {
                 </div>
               )}
             </div>
-          )}
-
-          {(form.linkedCertificateIds?.length ?? 0) > 0 && (
-            <fieldset className="fieldset">
-              <legend>{pp.proceduresLegend}</legend>
-              <p className="small muted" style={{ marginTop: 0 }}>
-                {pp.proceduresHint}
-              </p>
-              <ul className="compact-list small">
-                {form.linkedCertificateIds!.map((id) => {
-                  const cert = uogCertificateById(id)
-                  return <li key={id}>{cert ? uogCertificateLabel(cert) : id}</li>
-                })}
-              </ul>
-            </fieldset>
           )}
 
           {form.attachment &&

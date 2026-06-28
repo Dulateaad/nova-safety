@@ -91,9 +91,7 @@ export function PermitPhotoCapture(props: {
         </div>
       )}
 
-      {photos.length === 0 ? (
-        <p className="muted xsmall">{c.na}</p>
-      ) : (
+      {photos.length > 0 ? (
         <div className="photo-grid">
           {photos.map((photo) => (
             <div key={photo.id} className="photo-card card">
@@ -124,7 +122,7 @@ export function PermitPhotoCapture(props: {
             </div>
           ))}
         </div>
-      )}
+      ) : null}
     </fieldset>
   )
 }

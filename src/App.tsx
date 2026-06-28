@@ -11,6 +11,7 @@ import { RiskAssessmentPage } from './pages/RiskAssessmentPage'
 import { PermissionsPage } from './pages/PermissionsPage'
 import { CertificatesPage } from './pages/CertificatesPage'
 import { HelpPage } from './pages/HelpPage'
+import { AdminPanelPage } from './pages/AdminPanelPage'
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="matrix" element={<MatrixPage />} />
         <Route path="certificates" element={<CertificatesPage />} />
         <Route path="help" element={<HelpPage />} />
+        <Route path="admin" element={<AdminPanelPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

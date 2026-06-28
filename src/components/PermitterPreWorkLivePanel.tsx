@@ -3,8 +3,8 @@ import type { Permit } from '../types/domain'
 import type { DemoUser } from '../types/domain'
 import { WorkPermissionIcon } from './WorkPermissionIcon'
 import {
-  canPermitterEditPreWorkChecks,
-  permitterPreWorkBlockedHint,
+  canPerformerEditPreWorkChecks,
+  performerPreWorkBlockedHint,
   preWorkChecksStarted,
 } from '../lib/permitterPreWorkHints'
 import { openWorkPermissionPdf } from '../lib/openWorkPermissionPdf'
@@ -84,7 +84,7 @@ export function PermitterPreWorkLivePanel(props: {
   const c = t.common
   const pwc = t.preWorkCheck
   const serverBundle = permit.workPermissions
-  const canEdit = canPermitterEditPreWorkChecks(permit, actor)
+  const canEdit = canPerformerEditPreWorkChecks(permit, actor)
   const [localBundle, setLocalBundle] = useState<WorkPermissionsBundle | null>(serverBundle ?? null)
   const [dirty, setDirty] = useState(false)
   const [dirtyKinds, setDirtyKinds] = useState<WorkPermissionKind[]>([])
@@ -161,7 +161,7 @@ export function PermitterPreWorkLivePanel(props: {
   if (savedConfirmed && !dirty) {
     const firstKind = visibleDocs[0].kind
     return (
-      <section className="card work-perm-ert-panel" id="permitter-pre-work">
+      <section className="card work-perm-ert-panel" id="performer-pre-work">
         <header className="work-perm-ert-panel__head">
           <h2 style={{ margin: 0 }}>{pwc.panelTitle}</h2>
         </header>
@@ -194,7 +194,7 @@ export function PermitterPreWorkLivePanel(props: {
   }
 
   return (
-    <section className="card work-perm-ert-panel" id="permitter-pre-work">
+    <section className="card work-perm-ert-panel" id="performer-pre-work">
       <header className="work-perm-ert-panel__head">
         <h2 style={{ margin: 0 }}>{pwc.panelTitle}</h2>
         <p className="muted small" style={{ margin: '0.25rem 0 0' }}>
@@ -210,7 +210,7 @@ export function PermitterPreWorkLivePanel(props: {
         </ol>
       ) : (
         <p className="work-perm-ert-panel__blocked small">
-          {permitterPreWorkBlockedHint(permit.status)}
+          {performerPreWorkBlockedHint(permit.status)}
         </p>
       )}
 

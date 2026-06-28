@@ -146,6 +146,7 @@ export function packageDraftToPermitFields(draft: PermitDraft): Partial<Permit> 
     permitterUid: draft.permitterUid,
     performerUid: draft.performerUid,
     leadExpertUid: draft.leadExpertUid,
+    ertUid: draft.ertUid,
     isContractorPermit: draft.isContractorPermit,
     samePersonException: draft.samePersonException,
     registrationRefNo: draft.registrationRefNo,
@@ -159,6 +160,8 @@ export function packageDraftToPermitFields(draft: PermitDraft): Partial<Permit> 
     sitePhotos: draft.sitePhotos,
     ppr: draft.ppr,
     asor: draft.asor,
+    specialWorkActivities: draft.specialWorkActivities,
+    workPermissions: draft.workPermissions,
     egovSignatures: {},
     crewAckSignatures: {},
     signatures: {

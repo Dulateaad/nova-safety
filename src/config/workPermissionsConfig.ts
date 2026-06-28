@@ -25,9 +25,9 @@ export const WORK_PERMISSION_TEMPLATES: WorkPermissionTemplateMeta[] = [
     shortLabel: 'Газоопасные',
     style: 'orange',
     templateFile: 'Разрешение на газоопасные работы (RU, оранжевый стиль).docx',
-    requiresGasTests: true,
+    requiresGasTests: false,
     gasTestHint:
-      'Таблицу отбора проб заполняет ПАС (роль ERT). Данные сразу попадают в PDF разрешения и общий пакет.',
+      'Таблицу отбора проб заполняет ПАС (роль ERT) при огневых работах на том же наряде.',
     selectionNotice:
       'Для газоопасных работ необходимо заполнить специальное разрешение и провести газоанализ.',
   },
@@ -51,9 +51,9 @@ export const WORK_PERMISSION_TEMPLATES: WorkPermissionTemplateMeta[] = [
     shortLabel: 'Замкнутое пространство',
     style: 'blue',
     templateFile: 'Разрешение_на_вход_в_замкнутое_пространство__RU_.docx',
-    requiresGasTests: true,
+    requiresGasTests: false,
     gasTestHint:
-      'Газотест перед входом и периодический контроль — заполняет ПАС (ERT), синхронизация с документом в реальном времени.',
+      'Газоанализ перед входом — по процедуре объекта (без блока ERT на этом разрешении).',
     selectionNotice:
       'Для входа в замкнутое пространство требуется отдельное разрешение и газоанализ.',
   },

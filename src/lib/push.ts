@@ -10,6 +10,7 @@ import { app, db, firebaseConfigured } from './firebase'
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined
 const TOKEN_STORAGE_KEY = 'nova_push_token_v1'
+const SW_PATH = 'firebase-cloud-messaging-push-scope/firebase-messaging-sw.js'
 const SW_SCOPE = '/firebase-cloud-messaging-push-scope/'
 
 export type ForegroundPush = {
@@ -60,7 +61,10 @@ function swRegistrationUrl(): string {
       (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string) ?? '',
     appId: (import.meta.env.VITE_FIREBASE_APP_ID as string) ?? '',
   })
-  return `${import.meta.env.BASE_URL}firebase-messaging-sw.js?${params.toString()}`
+  const base = import.meta.env.BASE_URL.endsWith('/')
+    ? import.meta.env.BASE_URL
+    : `${import.meta.env.BASE_URL}/`
+  return `${base}${SW_PATH}?${params.toString()}`
 }
 
 async function registerMessagingSw(): Promise<ServiceWorkerRegistration> {

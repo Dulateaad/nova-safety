@@ -1,6 +1,5 @@
 /* global importScripts, firebase, clients */
-// Фоновый service worker для FCM web-push (отдельный от Workbox-SW приложения).
-// Конфиг Firebase передаётся через query-параметры при регистрации из src/lib/push.ts.
+// FCM service worker — отдельный scope от Workbox PWA (см. src/lib/push.ts).
 
 importScripts(
   'https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js',
@@ -20,8 +19,6 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging()
 
-// Сообщения отправляются data-only, поэтому уведомление строим сами —
-// это исключает дублирование (авто-показ + onBackgroundMessage).
 messaging.onBackgroundMessage((payload) => {
   const data = payload.data || {}
   const title = data.title || 'NOVA Safety'
@@ -45,7 +42,7 @@ self.addEventListener('notificationclick', (event) => {
           if ('navigate' in client) {
             try {
               client.navigate(target)
-            } catch (e) {
+            } catch {
               /* navigate может быть запрещён на кросс-скоупе */
             }
           }

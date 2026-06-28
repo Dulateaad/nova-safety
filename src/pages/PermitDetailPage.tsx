@@ -20,11 +20,7 @@ import { AbrDailyAckPanel } from '../components/AbrDailyAckPanel'
 import { CrewManagementPanel } from '../components/CrewManagementPanel'
 import { ReplacePerformerPanel } from '../components/ReplacePerformerPanel'
 import { WorkPermissionClosurePanel } from '../components/WorkPermissionClosurePanel'
-import {
-  PermitPackageBriefCard,
-  type PackagePermissionBrief,
-} from '../components/PermitPackageBrief'
-import { DocumentKitSummary } from '../components/DocumentKitSummary'
+import { PermitCoordinatorOverview } from '../components/PermitCoordinatorOverview'
 import { userById } from '../demoUsers'
 import { PTW_SITE_OPTIONS } from '../config/ptwSites'
 import {
@@ -38,6 +34,7 @@ import { addOneCalendarMonthFromStart } from '../lib/calendarMonth'
 import { formatStoredDateTime, toDatetimeLocalInput, normalizeDatetimeLocalInput } from '../lib/datetimeLocal'
 import {
   canUserSubmitPermitPackage,
+  canViewPermitDetailTechnicalBlocks,
   isUserOnPermitCrew,
 } from '../lib/permitAccess'
 import { isPermitSigningRejected } from '../lib/permitRejectionDisplay'
@@ -45,20 +42,9 @@ import {
   restorePackageSessionFromPermit,
   resolvePackageResumeRoute,
 } from '../lib/resumePermitPackage'
-import {
-  buildPackagePdf,
-  buildPermitPackagePartPdf,
-  preloadPackagePdfEngine,
-  viewPackagePdf,
-} from '../lib/buildPackagePdf'
-import { buildPermitPackageBrief } from '../lib/permitPackageBrief'
-import { buildWorkPermissionPdf } from '../lib/buildWorkPermissionPdf'
-import { openPprAttachmentInBrowser } from '../lib/pprAttachment'
-import { openPdfInBrowser } from '../lib/pdfPreview'
 import { canUserInitiateWorkStop } from '../lib/inspectorAccess'
 import { notifyWorkStopAlertsRefresh } from '../lib/refreshWorkStopAlerts'
-import { WORK_PERMISSION_BY_KIND } from '../config/workPermissionsConfig'
-import { permissionNoticesForActivities } from '../lib/workPermissions'
+import { permitRequiresErtApproval } from '../lib/fireWorkApproval'
 import {
   signingRoleOrder,
   mergePermitAfterEgovSign,
@@ -70,12 +56,13 @@ import { assigneeUidForRole } from '../lib/signatureStatus'
 import { canUserRejectPermit, rejectionPatch } from '../lib/approvalActions'
 import { resolveUserBadgeNo } from '../lib/userBadgeNumbers'
 import { notifySigningInvitesRefresh } from '../lib/refreshSigningInvites'
+import { notifyPermitNoticesRefresh } from '../lib/refreshPermitNotices'
 import { allCrewAcknowledged } from '../lib/crewAckComplete'
 import { canUserSignCrewAck } from '../lib/crewAckEligibility'
 import { provisionPermitSignersClient } from '../lib/provisionSigners'
 import { canUserDeletePermit } from '../lib/permitDelete'
 import {
-  buildGodModePermitPatch,
+  applyGodModeToPermit,
   canUseGodMode,
   godModeSignPermitClient,
 } from '../lib/godModeSign'
@@ -84,10 +71,8 @@ import {
   formatSpecialWorkLabelsLocalized,
   roleLabel,
 } from '../i18n/getLocale'
-import type { PackagePdfPart } from '../lib/buildSigningPackagePdf'
 import type { WorkStopPhoto } from '../types/workStop'
 import type { WorkStopResolveAction } from '../lib/workStopFunctions'
-import type { WorkPermissionKind } from '../types/workPermissions'
 import type { EgovSignRole, StoredEgovSignature } from '../types/egovSignature'
 import type { StoredCrewAckSignature } from '../types/crewAck'
 import type { PermitStatus } from '../types/domain'
@@ -111,7 +96,6 @@ export function PermitDetailPage() {
   const { t, language } = useLanguage()
   const dp = t.detailPage
   const df = t.detailForm
-  const dk = t.docKit
   const c = t.common
   const journal = useJournal(id)
   const nav = useNavigate()
@@ -121,22 +105,17 @@ export function PermitDetailPage() {
   const [closeBusy, setCloseBusy] = useState(false)
   const provisionWarning =
     (location.state as { provisionWarning?: string } | null)?.provisionWarning ?? null
-  const [pdfBusy, setPdfBusy] = useState(false)
-  const [pdfPartBusy, setPdfPartBusy] = useState<PackagePdfPart | null>(null)
-  const [viewingPermission, setViewingPermission] = useState<WorkPermissionKind | null>(null)
-  const [gasTestFocus, setGasTestFocus] = useState<WorkPermissionKind | null>(null)
-
-  useEffect(() => {
-    preloadPackagePdfEngine()
-  }, [])
-
-  useEffect(() => {
-    if (!gasTestFocus) return
-    const el = document.getElementById(`ert-gas-${gasTestFocus}`)
-    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [gasTestFocus])
 
   const permit = permits.find((p) => p.id === id)
+
+  useEffect(() => {
+    if (location.hash !== '#ert-gas-tests' && location.hash !== '#performer-pre-work') return
+    const timer = window.setTimeout(() => {
+      const id = location.hash.slice(1)
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 150)
+    return () => window.clearTimeout(timer)
+  }, [location.hash, id, permit?.workPermissions?.documents?.length])
 
   useEffect(() => {
     if (!user || !permit) return
@@ -180,7 +159,8 @@ export function PermitDetailPage() {
     )
   }
 
-  const row = matrixRow(p.category)
+  const showTechnicalBlocks = canViewPermitDetailTechnicalBlocks(actor)
+  const matrixInfo = showTechnicalBlocks ? matrixRow(p.category) : null
 
   function canUserSignRole(role: EgovSignRole): boolean {
     if (p.status !== 'on_approval') return false
@@ -195,6 +175,8 @@ export function PermitDetailPage() {
       if (authMode === 'firebase') {
         const summary = await godModeSignPermitClient(p.id)
         if (!summary) throw new Error(t.godMode.failed)
+        await refresh()
+        if (summary.issued) notifyPermitNoticesRefresh()
         window.alert(
           fillTemplate(t.godMode.done, {
             crewSigned: summary.crewSigned,
@@ -204,12 +186,8 @@ export function PermitDetailPage() {
         )
         await refresh()
       } else {
-        const { patch, summary } = buildGodModePermitPatch(p, resolveUser, userDirectory)
-        const merged = { ...p, ...patch }
-        await updatePermit(p.id, {
-          ...patch,
-          ...issueStatusPatchIfApprovalsComplete(merged),
-        })
+        const { patch, summary } = applyGodModeToPermit(p, resolveUser, userDirectory)
+        await updatePermit(p.id, patch)
         window.alert(
           fillTemplate(t.godMode.doneDemo, {
             crewSigned: summary.crewSigned,
@@ -218,70 +196,19 @@ export function PermitDetailPage() {
         )
       }
       notifySigningInvitesRefresh()
-    } catch {
-      window.alert(t.godMode.failed)
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : t.godMode.failed)
     }
   }
 
   const showApprovalFlow =
     p.status === 'on_approval' || isPermitSigningRejected(p)
 
-  const showPdfSection = p.status !== 'draft' || !!p.packagePdf
-  const packageBrief = buildPermitPackageBrief(p, resolveUser)
-  const permissionBriefs: PackagePermissionBrief[] = (
-    p.workPermissions?.documents ?? []
-  ).map((doc) => ({
-    kind: doc.kind,
-    label: WORK_PERMISSION_BY_KIND[doc.kind].label,
-    hasPdf: Boolean(doc.pdfBase64) || Boolean(doc.generatedAtIso),
-    requiresGasTests: WORK_PERMISSION_BY_KIND[doc.kind].requiresGasTests,
-  }))
-  const docKitTemplates = permissionNoticesForActivities(p)
   const showWorkStopBtn =
     canUserInitiateWorkStop(p, actor.id) &&
     p.status !== 'closed' &&
     p.status !== 'archived' &&
     p.status !== 'annulled'
-
-  async function viewPermitPdf() {
-    setPdfBusy(true)
-    try {
-      const doc = await buildPackagePdf(p, resolveUser, userDirectory)
-      viewPackagePdf(doc)
-    } catch {
-      window.alert(t.modals.pdfPackageFailed)
-    } finally {
-      setPdfBusy(false)
-    }
-  }
-
-  async function viewPackagePart(part: PackagePdfPart) {
-    setPdfPartBusy(part)
-    try {
-      const doc = await buildPermitPackagePartPdf(part, p, resolveUser, userDirectory)
-      viewPackagePdf(doc)
-    } catch (e) {
-      window.alert(e instanceof Error ? e.message : String(e))
-    } finally {
-      setPdfPartBusy(null)
-    }
-  }
-
-  async function viewPermissionPdf(kind: WorkPermissionKind) {
-    const doc = p.workPermissions?.documents.find((d) => d.kind === kind)
-    if (!doc) return
-    setViewingPermission(kind)
-    try {
-      const base64 = doc.pdfBase64 ?? (await buildWorkPermissionPdf(doc)).base64
-      openPdfInBrowser(base64, doc.title)
-    } finally {
-      setViewingPermission(null)
-    }
-  }
-
-  function focusGasTest(kind: WorkPermissionKind) {
-    setGasTestFocus((cur) => (cur === kind ? null : kind))
-  }
 
   async function closePermitEarly() {
     if (!canUserTriggerStatus(p, 'closed', actor.role)) return
@@ -487,6 +414,19 @@ export function PermitDetailPage() {
         </div>
       ) : null}
 
+      {actor.role === 'ert' &&
+      permitRequiresErtApproval(p) &&
+      p.workPermissions?.documents?.length ? (
+        <ErtGasTestLivePanel
+          permit={p}
+          actor={actor}
+          updatePermit={updatePermit}
+          resolveUser={resolveUser}
+          userDirectory={userDirectory}
+          refresh={refresh}
+        />
+      ) : null}
+
       <PermitEarlyCloseCard
         permit={p}
         actor={actor}
@@ -499,6 +439,17 @@ export function PermitDetailPage() {
       <CrewManagementPanel permit={p} actor={actor} />
 
       <ReplacePerformerPanel permit={p} actor={actor} />
+
+      {actor.role === 'performer' && p.workPermissions?.documents?.length ? (
+        <PermitterPreWorkLivePanel
+          permit={p}
+          actor={actor}
+          updatePermit={updatePermit}
+          resolveUser={resolveUser}
+          userDirectory={userDirectory}
+          refresh={refresh}
+        />
+      ) : null}
 
       <AbrDailyAckPanel permit={p} actor={actor} />
 
@@ -522,62 +473,8 @@ export function PermitDetailPage() {
         onSubmit={(reason, photo) => void submitWorkStop(reason, photo)}
       />
 
-      {showPdfSection ? (
-        <section className="card" style={{ marginBottom: '1rem' }}>
-          <h2 style={{ marginTop: 0 }}>{dk.approvalPackage}</h2>
-          {docKitTemplates.length > 0 ? (
-            <DocumentKitSummary templates={docKitTemplates} />
-          ) : null}
-          <PermitPackageBriefCard
-            brief={packageBrief}
-            permissions={permissionBriefs}
-            showGasTestTasks={actor.role === 'ert'}
-            activeGasKind={gasTestFocus}
-            onViewPart={(part) => void viewPackagePart(part)}
-            onViewPpr={
-              p.ppr?.attachment
-                ? () => {
-                    openPprAttachmentInBrowser(p.ppr!.attachment!)
-                  }
-                : undefined
-            }
-            onViewPermission={(kind) => void viewPermissionPdf(kind)}
-            onGasTestTask={focusGasTest}
-            viewingPart={pdfPartBusy}
-            viewingPermission={viewingPermission}
-          />
-          <button
-            type="button"
-            className="btn primary small"
-            style={{ marginTop: '0.75rem' }}
-            disabled={pdfBusy}
-            onClick={() => void viewPermitPdf()}
-          >
-            {pdfBusy ? c.opening : dp.viewFullPdf}
-          </button>
-        </section>
-      ) : null}
-
-      {actor.role === 'permitter' && p.workPermissions?.documents?.length ? (
-        <PermitterPreWorkLivePanel
-          permit={p}
-          actor={actor}
-          updatePermit={updatePermit}
-          resolveUser={resolveUser}
-          userDirectory={userDirectory}
-          refresh={refresh}
-        />
-      ) : null}
-
-      {actor.role === 'ert' && p.workPermissions?.documents?.length ? (
-        <ErtGasTestLivePanel
-          permit={p}
-          actor={actor}
-          updatePermit={updatePermit}
-          resolveUser={resolveUser}
-          userDirectory={userDirectory}
-          focusKind={gasTestFocus}
-        />
+      {actor.role === 'coordinator' && p.status !== 'draft' ? (
+        <PermitCoordinatorOverview permit={p} resolveUser={resolveUser} />
       ) : null}
 
       {p.status === 'closed' && p.workPermissions?.documents?.length ? (
@@ -659,6 +556,7 @@ export function PermitDetailPage() {
         </>
       ) : null}
 
+      {showTechnicalBlocks ? (
       <section className="card">
         <h2>Бланк НД — общие поля (F02)</h2>
         <div className="form grid-2" style={{ gap: '0.75rem' }}>
@@ -828,7 +726,9 @@ export function PermitDetailPage() {
           </label>
         </div>
       </section>
+      ) : null}
 
+      {showTechnicalBlocks ? (
       <div className="grid-2">
         <section className="card">
           <h2>Реквизиты</h2>
@@ -896,16 +796,19 @@ export function PermitDetailPage() {
           )}
         </section>
 
+        {matrixInfo ? (
         <section className="card">
           <h2>Матрица (кат. {permit.category})</h2>
           <p className="small muted">
-            Документы: {row.requiredDocuments.join(', ')}
+            Документы: {matrixInfo.requiredDocuments.join(', ')}
           </p>
           <p className="small muted">
-            Базовый срок: {row.defaultValidityDays} дн.
+            Базовый срок: {matrixInfo.defaultValidityDays} дн.
           </p>
         </section>
+        ) : null}
       </div>
+      ) : null}
 
       {actor.role !== 'executor' && (
       <>

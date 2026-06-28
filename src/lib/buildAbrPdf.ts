@@ -5,6 +5,8 @@ import {
   formatAbrNumbers,
 } from '../config/abrCatalog'
 import type { AbrForm, AbrStageRow } from '../types/abr'
+import { abrDailyAckSignaturePdfText } from './abrDailyAckSignaturePdfText'
+import { normalizeAbrDailyAcks } from './abrDailyAck'
 import { initPdfMake, pdfBase64Async } from './pdfMakeEngine'
 
 type PdfCell = Record<string, unknown>
@@ -77,6 +79,31 @@ function bodyPara(text: string, opts?: { bold?: boolean; italics?: boolean }): R
   }
 }
 
+function legendPara(): Record<string, unknown> {
+  return {
+    fontSize: FS,
+    lineHeight: 1.65,
+    margin: [0, 6, 0, 10],
+    text: [
+      { text: 'Легенда: ', italics: true },
+      {
+        text: ' Красный ',
+        bold: true,
+        color: '#9C0006',
+        background: C.hazardActive,
+      },
+      { text: ' — активный опасный фактор в данном АБР; ', italics: true },
+      {
+        text: ' Зелёный ',
+        bold: true,
+        color: '#375623',
+        background: C.controlActive,
+      },
+      { text: ' — активная мера защиты в данном АБР.', italics: true },
+    ],
+  }
+}
+
 function shiftLabel(abr: AbrForm): string {
   if (abr.shiftNight) return 'Ночь'
   if (abr.shiftDay) return 'День'
@@ -89,38 +116,6 @@ function usedHazardNumbers(stages: AbrStageRow[]): Set<number> {
 
 function usedControlNumbers(stages: AbrStageRow[]): Set<number> {
   return new Set(stages.flatMap((s) => s.controlNumbers))
-}
-
-function formatAnswerText(text: string): string {
-  const raw = (text || ' ').trim()
-  if (!raw) return ' '
-
-  let parts = raw
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-
-  if (parts.length === 1) {
-    const line = parts[0]
-    if (line.includes(';')) {
-      parts = line.split(';').map((item) => item.trim()).filter(Boolean)
-    } else if (/\d+[\.\)]\s/.test(line)) {
-      parts = line
-        .split(/(?=\d+[\.\)]\s)/)
-        .map((item) => item.replace(/^\d+[\.\)]\s*/, '').trim())
-        .filter(Boolean)
-    }
-  }
-
-  return parts
-    .map((line, i) => {
-      const t = line.trim()
-      if (!t) return ''
-      if (/^\d+[\.\)]\s/.test(t)) return t
-      return `${i + 1}. ${t.replace(/^•\s*/, '')}`
-    })
-    .filter(Boolean)
-    .join('\n')
 }
 
 function headerTable(abr: AbrForm): Record<string, unknown> {
@@ -160,7 +155,7 @@ function stagesTable(stages: AbrStageRow[]): Record<string, unknown> {
       ? rows.map((row) => [
           cell(String(row.order), { align: 'center', fill: C.stagePeach }),
           cell(row.title, { fill: C.stagePeach }),
-          cell(formatAbrNumbers(row.hazardNumbers), { fill: C.stagePeach }),
+          cell(formatAbrNumbers(row.hazardNumbers), { fill: C.stageHazardPeach }),
           cell(formatAbrNumbers(row.controlNumbers), { fill: C.controlGreen }),
         ])
       : [
@@ -271,44 +266,17 @@ function controlsReferenceTable(active: Set<number>): Record<string, unknown> {
   }
 }
 
-const BRIEFING_QUESTIONS = [
-  'Какие 3 основных опасных фактора и меры их контроля вы обсудили?',
-  'Какие 3 основных сценария для приостановки / прекращения работ вы обсудили?',
-  'Имеются ли у нас в бригаде МОР? Знают ли они своих наставников? Знают ли наставники свои обязанности?',
-] as const
-
-const POST_WORK_QUESTIONS = [
-  'Что было сделано хорошо?',
-  'Что было сделано неправильно?',
-  'Как можно улучшить выполнение работ?',
-  'Использовался ли ППР и для чего?',
-] as const
-
-function qaTable(
-  questions: readonly string[],
-  answers: string[],
-): Record<string, unknown> {
-  const body: PdfCell[][] = [
-    [hdrCell('№'), hdrCell('Вопрос'), hdrCell('Ответ / комментарий')],
-    ...questions.map((q, i) => [
-      cell(String(i + 1), { align: 'center' }),
-      cell(q, { italics: true }),
-      cell(formatAnswerText(answers[i] ?? ' ')),
-    ]),
-  ]
-  return {
-    table: { widths: ['5%', '32%', '*'], body },
-    layout: LAYOUT,
-    margin: [0, 0, 0, 2],
-  }
-}
-
 function dailyAckReportTable(
   days: import('../types/abrDailyAck').AbrDailyAckDay[],
 ): Record<string, unknown> {
   const rows = days
     .flatMap((day) =>
-      day.entries.map((e) => [day.dateIso, e.fullName, e.roleLabel, e.signatureNote]),
+      day.entries.map((e) => [
+        day.dateIso,
+        e.fullName,
+        e.roleLabel,
+        abrDailyAckSignaturePdfText(e),
+      ]),
     )
     .filter((r) => String(r[1]).trim())
   const body: PdfCell[][] = [
@@ -334,54 +302,6 @@ function dailyAckReportTable(
   }
 }
 
-function crewTable(abr: AbrForm): Record<string, unknown> {
-  const crew = abr.crewAcknowledgments.filter((c) => c.fullName.trim())
-  const rowCount = Math.max(crew.length, 1)
-  const body: PdfCell[][] = [
-    [
-      hdrCell('Ф.И.О. (печатными буквами)'),
-      hdrCell('Должность'),
-      hdrCell('Подпись'),
-    ],
-    ...Array.from({ length: rowCount }, (_, i) => [
-      cell(crew[i]?.fullName || ' ', { fill: C.white }),
-      cell(crew[i]?.roleLabel || ' ', { fill: C.white }),
-      cell('\n\n', { fill: C.white, align: 'center' }),
-    ]),
-  ]
-  return {
-    table: { widths: ['40%', '32%', '28%'], body },
-    layout: LAYOUT,
-    margin: [0, 0, 0, 2],
-  }
-}
-
-function approvalTable(abr: AbrForm): Record<string, unknown> {
-  const signers =
-    abr.approvalSigners.length >= 4
-      ? abr.approvalSigners.slice(0, 4)
-      : [abr.workSupervisor, abr.areaPermitter]
-  const body: PdfCell[][] = [
-    [
-      hdrCell('Ответственное лицо'),
-      hdrCell('Ф.И.О. (печатными буквами)'),
-      hdrCell('№ пропуска'),
-      hdrCell('Подпись'),
-    ],
-    ...signers.map((person) => [
-      cell(person.roleLabel || ' '),
-      cell(person.fullName || ' '),
-      cell(person.badgeNo || ' '),
-      cell('\n\n', { align: 'center' }),
-    ]),
-  ]
-  return {
-    table: { widths: ['24%', '30%', '14%', '32%'], body },
-    layout: LAYOUT,
-    margin: [0, 0, 0, 2],
-  }
-}
-
 export async function buildAbrPdf(
   abr: AbrForm,
   dailyAcks?: import('../types/abrDailyAck').AbrDailyAckDay[],
@@ -395,14 +315,7 @@ export async function buildAbrPdf(
     .filter(Boolean)
     .join(' ')
 
-  const completionLine = [
-    abr.workLocation ? `Объект: ${abr.workLocation}` : '',
-    abr.jobDescription ? `— ${abr.jobDescription}` : '',
-    abr.permitNo ? `| Наряд-допуск № ${abr.permitNo}` : '',
-    abr.dateIso ? `| ${abr.dateIso}` : '',
-  ]
-    .filter(Boolean)
-    .join(' ')
+  const ackDays = normalizeAbrDailyAcks(dailyAcks)
 
   const content: Record<string, unknown>[] = [
     {
@@ -413,6 +326,7 @@ export async function buildAbrPdf(
       margin: [0, 0, 0, 6],
     },
     headerTable(abr),
+    legendPara(),
     bodyPara(`Описание задания: ${abr.jobDescription || ' '}`),
     sectionPara('Этапы задания, опасные факторы и средства защиты'),
     stagesTable(abr.stages),
@@ -422,53 +336,12 @@ export async function buildAbrPdf(
     sectionPara('Реестр средств защиты'),
     bodyPara('Выделены меры, отмеченные как применяемые в рамках данного АБР.'),
     controlsReferenceTable(activeControls),
-    sectionPara('Инструктаж перед началом работ'),
+    sectionPara('Подписи бригады — ежедневное ознакомление с АБР'),
     bodyPara(
-      'Производитель работ / бригадир обсуждает следующие вопросы с бригадой и фиксирует результаты.',
-    ),
-    qaTable(BRIEFING_QUESTIONS, [
-      abr.briefing.topHazardsAndControls,
-      abr.briefing.stopScenarios,
-      abr.briefing.morMentors,
-    ]),
-    sectionPara('Подтверждение бригады'),
-    bodyPara(
-      'Настоящим подтверждаю, что я понимаю мои роли и обязанности, опасные факторы и средства защиты, связанные с данным анализом безопасности работ.',
+      'АБР подписывают только работники бригады: каждый день им приходит задание подписать ознакомление через eGov Mobile. Подпись действительна 24 часа; по истечении суток работник подписывает повторно. Ниже — журнал подписей (дата, Ф.И.О., должность, подпись).',
       { italics: true },
     ),
-    crewTable(abr),
-    ...(dailyAcks && dailyAcks.some((d) => d.entries.length > 0)
-      ? [
-          sectionPara('Ежедневное ознакомление с АБР'),
-          bodyPara(
-            'Работники подтверждают ознакомление с АБР ежедневно. Ниже — журнал подписей (Ф.И.О., должность, подпись).',
-            { italics: true },
-          ),
-          dailyAckReportTable(dailyAcks),
-        ]
-      : []),
-    sectionPara('Утверждение АБР'),
-    approvalTable(abr),
-    sectionPara('Анализ безопасности работ — завершение'),
-    bodyPara(completionLine || ' '),
-    sectionPara('Итоги выполнения работ'),
-    bodyPara(
-      'По завершении работ производитель работ / бригадир обсуждает следующие вопросы с рабочей бригадой.',
-    ),
-    qaTable(POST_WORK_QUESTIONS, [
-      abr.postWork.doneWell,
-      abr.postWork.doneWrong,
-      abr.postWork.improvements,
-      abr.postWork.pprUsage,
-    ]),
-    bodyPara(
-      'Легенда: Красный — активный опасный фактор в данном АБР; Зелёный — активная мера защиты в данном АБР.',
-      { italics: true },
-    ),
-    bodyPara(
-      'Документ составлен в соответствии с требованиями ПЛА RZK-NSS-000-PLN-HSE-00047-00.',
-      { italics: true },
-    ),
+    dailyAckReportTable(ackDays),
   ]
 
   const doc: Record<string, unknown> = {

@@ -82,40 +82,38 @@ export const NEBOSH_RISK_BAND_EN: Record<Exclude<NeboshRiskBand, ''>, string> = 
   high: 'HIGH',
 }
 
+/** Цвета PDF оценки риска (образец пакета NOVA / Excel Office). */
 export const NEBOSH_PDF_COLORS = {
   white: '#FFFFFF',
-  headerDark: '#1e3a5f',
-  headerMid: '#4a6fa5',
-  labelBg: '#e8eef5',
-  altRow: '#f5f8fc',
-  groupHeader: '#d9e2ef',
+  headerDark: '#1F4E79',
+  headerMid: '#2E75B6',
+  labelBg: '#D6E4F0',
+  altRow: '#F2F2F2',
+  groupHeader: '#1F4E79',
 } as const
 
 /** Цвет ячейки матрицы 5×5 по баллу. */
 export function neboshCellColor(score: number): string {
   const band = neboshRiskBand(score)
-  if (band === 'high') return '#fecaca'
-  if (band === 'medium') return '#fef08a'
-  if (band === 'low') return '#bbf7d0'
-  return '#f1f5f9'
+  if (band === 'high') return '#FF0000'
+  if (band === 'medium') return '#FF9900'
+  if (band === 'low') return '#92D050'
+  return '#FFFFFF'
 }
 
 export function neboshCellTextColor(score: number): string {
   const band = neboshRiskBand(score)
-  if (band === 'high') return '#7f1d1d'
-  if (band === 'medium') return '#713f12'
-  if (band === 'low') return '#14532d'
-  return '#334155'
+  if (band === 'high' || band === 'medium' || band === 'low') return '#FFFFFF'
+  return '#000000'
 }
 
 export function neboshRiskBandFill(band: Exclude<NeboshRiskBand, ''>): string {
-  if (band === 'high') return '#fecaca'
-  if (band === 'medium') return '#fef08a'
-  return '#bbf7d0'
+  if (band === 'high') return '#FF0000'
+  if (band === 'medium') return '#FF9900'
+  return '#92D050'
 }
 
 export function neboshRiskBandTextColor(band: Exclude<NeboshRiskBand, ''>): string {
-  if (band === 'high') return '#7f1d1d'
-  if (band === 'medium') return '#713f12'
-  return '#14532d'
+  if (band === 'high' || band === 'medium' || band === 'low') return '#FFFFFF'
+  return '#000000'
 }

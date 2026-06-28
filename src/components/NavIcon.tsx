@@ -7,6 +7,7 @@ type NavIconName =
   | 'permissions'
   | 'certificates'
   | 'help'
+  | 'admin'
 
 const paths: Record<NavIconName, string> = {
   journal:
@@ -23,6 +24,8 @@ const paths: Record<NavIconName, string> = {
     'M6 4h12v2H6V4zm0 4h8v2H6V8zm0 4h10v2H6v-2zm0 4h6v2H6v-2z',
   help:
     'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 15h1.5v1.5H12V17zm0-11.5a3.25 3.25 0 0 1 3.18 3.9c-.28 1.4-1.55 1.85-2.05 2.35-.35.35-.63.75-.63 1.35V14h-1.5v-.4c0-1 .55-1.55 1.05-2.05.55-.55 1.2-.95 1.45-1.85A1.75 1.75 0 0 0 12 5.5z',
+  admin:
+    'M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 2.18 7 3.11v5.71c0 4.52-3.08 8.79-7 9.93-3.92-1.14-7-5.41-7-9.93V6.29l7-3.11zM11 7h2v6h-2V7zm0 8h2v2h-2v-2z',
 }
 
 export function NavIcon({ name }: { name: NavIconName }) {

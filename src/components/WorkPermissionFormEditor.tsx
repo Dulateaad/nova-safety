@@ -70,7 +70,7 @@ function FormSection(props: {
 export function WorkPermissionFormEditor(props: {
   doc: WorkPermissionDocument
   onChange: (form: WorkPermissionForm) => void
-  /** Скрыть раздел 3 — заполняется допускающим на карточке наряда. */
+  /** Скрыть раздел 3 — заполняется производителем на карточке наряда. */
   hidePreWorkSection?: boolean
 }) {
   const { doc, onChange, hidePreWorkSection = false } = props

@@ -87,11 +87,21 @@ export function isWorkerOnlyUser(user: DemoUser | null): boolean {
   return user?.role === 'executor'
 }
 
+/** F02, реквизиты и матрица в карточке наряда — только координатору. */
+export function canViewPermitDetailTechnicalBlocks(user: DemoUser | null): boolean {
+  return user?.role === 'coordinator'
+}
+
 export function isNavRouteAccessibleForUser(to: string, user: DemoUser | null): boolean {
   if (!user) return false
   if (user.role === 'executor') {
     return to === '/' || to.startsWith('/p/')
   }
+  if (user.role === 'ert') {
+    return to === '/' || to.startsWith('/p/') || to === '/help'
+  }
+  if (to === '/admin') return user.role === 'coordinator'
+  if (to === '/matrix' && user.role !== 'coordinator') return false
   if (to === '/' || to === '/matrix' || to === '/ppr') return true
   if (to === '/new' || to === '/certificates') {
     return isPprGatePassed()
@@ -111,6 +121,13 @@ export function navRouteLockedHintForUser(
     if (to === '/') return null
     if (to.startsWith('/p/')) return null
     return 'Работникам доступен только журнал и подписание ознакомления по назначенным нарядам.'
+  }
+  if (user.role === 'ert') {
+    if (to === '/' || to.startsWith('/p/') || to === '/help') return null
+    return 'ПАС (Пожарно-аварийная служба): доступны журнал нарядов, карточка наряда (газотест) и справка.'
+  }
+  if (to === '/admin' && user.role !== 'coordinator') {
+    return 'Админ-панель доступна только координатору.'
   }
   return isNavRouteAccessible(to) ? null : navRouteLockedHint(to)
 }

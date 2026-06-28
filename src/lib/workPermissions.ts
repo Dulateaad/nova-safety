@@ -19,6 +19,7 @@ import {
   workPermissionKindLabel,
   type LanguageCode,
 } from '../i18n/getLocale'
+import { renderSingleWorkPermission } from './buildWorkPermissionPdf'
 
 export function requiredPermissionKinds(
   draft: Pick<PermitDraft, 'specialWorkActivities' | 'specialWorkActivity'>,
@@ -154,9 +155,10 @@ export function validateWorkPermissionsBundle(
   if (!bundle?.documents?.length) {
     return v.generatePermissions
   }
+  const enriched = enrichWorkPermissionsBundle(draft, bundle)
   const kinds = requiredPermissionKinds(draft)
   for (const kind of kinds) {
-    const doc = bundle.documents.find((d) => d.kind === kind)
+    const doc = enriched.documents.find((d) => d.kind === kind)
     const kindLabel = workPermissionKindLabel(kind, code)
     if (!doc) {
       return fillTemplate(v.missingDoc, { kind: kindLabel })
@@ -165,11 +167,35 @@ export function validateWorkPermissionsBundle(
     if (!form.workDescription.trim() || form.workDescription.trim().length < 3) {
       return fillTemplate(v.workDescriptionMin, { kind: kindLabel })
     }
-    if (!doc.generatedAtIso) {
+    if (!isWorkPermissionPdfReady(doc)) {
       return fillTemplate(v.generatePermission, { kind: kindLabel })
     }
   }
   return null
+}
+
+export function isWorkPermissionPdfReady(doc: WorkPermissionDocument): boolean {
+  return Boolean(doc.generatedAtIso?.trim() || doc.pdfBase64?.trim())
+}
+
+export async function ensureWorkPermissionsPdfsReady(
+  draft: PermitDraft,
+  bundle: WorkPermissionsBundle,
+  ppr?: PprForm,
+): Promise<WorkPermissionsBundle> {
+  const synced = initializeWorkPermissionsBundle({ ...draft, workPermissions: bundle }, ppr)
+  const enriched = enrichWorkPermissionsBundle(draft, synced)
+  const kinds = new Set(requiredPermissionKinds(draft))
+  const documents = await Promise.all(
+    enriched.documents.map(async (doc) => {
+      if (!kinds.has(doc.kind) || isWorkPermissionPdfReady(doc)) return doc
+      return renderSingleWorkPermission(doc)
+    }),
+  )
+  return {
+    documents,
+    updatedAtIso: new Date().toISOString(),
+  }
 }
 
 export function workPermissionsFromPermit(permit: Permit): WorkPermissionsBundle | undefined {

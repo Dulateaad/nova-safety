@@ -1,41 +1,43 @@
+import lottie, { type AnimationItem } from 'lottie-web'
 import { useEffect, useRef } from 'react'
+import { patchThinkingAnimation } from '../lib/patchThinkingAnimation'
 
-type LottieInstance = { destroy: () => void }
-
-/** Анимированный вектор-робот (Lottie) для экранов загрузки. */
+/** Анимированный бот (Lottie JSON) для экранов загрузки. */
 export function LottieRobot({ className }: { className?: string }) {
-  const ref = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const animRef = useRef<AnimationItem | null>(null)
 
   useEffect(() => {
-    let anim: LottieInstance | null = null
+    const container = containerRef.current
+    if (!container) return
+
     let cancelled = false
 
-    void Promise.all([
-      import('lottie-web'),
-      fetch(`${import.meta.env.BASE_URL}animations/robot-bot.json`).then((r) =>
-        r.json(),
-      ),
-    ])
-      .then(([lottieMod, data]) => {
-        if (cancelled || !ref.current) return
-        const lottie = lottieMod.default
-        anim = lottie.loadAnimation({
-          container: ref.current,
+    void fetch(`${import.meta.env.BASE_URL}animations/thinking.json`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`thinking.json: ${r.status}`)
+        return r.json()
+      })
+      .then((animationData) => {
+        const patched = patchThinkingAnimation(animationData)
+        if (cancelled || !containerRef.current) return
+        animRef.current?.destroy()
+        animRef.current = lottie.loadAnimation({
+          container: containerRef.current,
           renderer: 'svg',
           loop: true,
           autoplay: true,
-          animationData: data,
+          animationData: patched,
         })
       })
-      .catch(() => {
-        /* анимация не критична — тихо игнорируем */
-      })
+      .catch(() => {})
 
     return () => {
       cancelled = true
-      anim?.destroy()
+      animRef.current?.destroy()
+      animRef.current = null
     }
   }, [])
 
-  return <div ref={ref} className={className} aria-hidden />
+  return <div ref={containerRef} className={className} aria-hidden />
 }

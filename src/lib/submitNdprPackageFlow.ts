@@ -37,6 +37,10 @@ export async function executeNdprPackageSubmit(
     p = await createPermit(packageDraft)
   }
 
+  if (packageDraft.workPermissions) {
+    await updatePermit(p.id, { workPermissions: packageDraft.workPermissions })
+  }
+
   const { buildSigningPackagePdf } = await import('./buildSigningPackagePdf')
   const packagePdf = await buildSigningPackagePdf(p, resolveUser, userDirectory)
   await updatePermit(p.id, { packagePdf })

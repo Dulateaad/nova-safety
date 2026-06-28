@@ -70,11 +70,9 @@ const SPECIAL_IDS = new Set<string>(
   SPECIAL_WORK_ACTIVITY_ORDER as unknown as readonly string[],
 )
 
-/** Виды работ, для которых ERT (ПАС) согласует НДПР и заполняет газотест. */
+/** Виды работ, для которых ERT (ПАС) согласует НД и заполняет газотест — только огневые. */
 export const ERT_APPROVAL_ACTIVITIES: readonly SpecialWorkActivity[] = [
   'open_flame_fire',
-  'gas_hazard',
-  'confined_space',
 ] as const satisfies readonly SpecialWorkActivity[]
 
 export function activitiesRequireErtApproval(
@@ -179,6 +177,7 @@ export function applyWorkActivitiesToDraft(
   const specialWorkActivities = normalizeSpecialWorkActivities(activities)
   const specialWorkActivity = primarySpecialWorkActivity(specialWorkActivities)
   const derived = applySpecialWorkActivity(specialWorkActivity)
+  const needsErt = activitiesRequireErtApproval(specialWorkActivities)
   return {
     ...draft,
     specialWorkActivities,
@@ -186,6 +185,7 @@ export function applyWorkActivitiesToDraft(
     permitType: derived.permitType,
     category: derived.category,
     ...(derived.permitType === 'cold' ? { f04: undefined } : {}),
+    ertUid: needsErt ? draft.ertUid?.trim() || undefined : undefined,
   }
 }
 
@@ -223,7 +223,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   coordinator: 'Координатор НД / админ',
   contractor: 'Подрядчик',
   safety: 'Инспектор по ОТ, ТБ и ООС',
-  ert: 'Emergency Response Team',
+  ert: 'ПАС (Пожарно-аварийная служба)',
   leadExpert: 'Утверждающий НД',
 }
 

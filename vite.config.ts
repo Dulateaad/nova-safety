@@ -10,7 +10,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons.svg', 'pwa-192.png', 'pwa-512.png'],
+      includeAssets: [
+        'favicon.svg',
+        'icons.svg',
+        'pwa-192.png',
+        'pwa-512.png',
+        'animations/thinking.json',
+      ],
       manifest: {
         name: 'NOVA Safety — Наряд-допуск',
         short_name: 'NOVA PTW',
@@ -45,12 +51,13 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff2,gif,json,lottie,wasm}'],
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/assets\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/assets\//, /^\/firebase-cloud-messaging-push-scope\//],
       },
     }),
   ],

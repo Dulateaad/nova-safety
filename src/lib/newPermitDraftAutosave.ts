@@ -100,6 +100,10 @@ export function parseStoredNewPermitDraft(json: unknown): PermitDraft | null {
         typeof o.leadExpertUid === 'string'
           ? o.leadExpertUid
           : base.leadExpertUid,
+      ertUid:
+        typeof o.ertUid === 'string' && o.ertUid.trim()
+          ? o.ertUid.trim()
+          : undefined,
       isContractorPermit:
         typeof o.isContractorPermit === 'boolean'
           ? o.isContractorPermit
@@ -201,6 +205,7 @@ export function mergePreparedNdprDraftForSession(
     permitterUid: prepared.permitterUid,
     issuerUid: prepared.issuerUid,
     leadExpertUid: prepared.leadExpertUid,
+    ertUid: prepared.ertUid,
     executors: prepared.executors,
     f02: { ...draft.f02, ...prepared.f02 },
   }

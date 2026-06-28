@@ -60,19 +60,23 @@ export function getPackageSubmitRequirements(args: {
       ok: aiOk,
       hint: aiOk
         ? undefined
-        : 'Ключ Claude или Gemini не задан — кнопки «Сформировать» недоступны',
+        : 'Ключ Claude не задан — кнопки «Сформировать» недоступны',
     },
     {
       id: 'abr',
       label: `${ABR_LABEL} сформирован`,
       ok: abrReady,
-      hint: abrReady ? undefined : `Нажмите «Сформировать ${ABR_LABEL}» выше`,
+      hint: abrReady
+        ? undefined
+        : `Заполните ${ABR_LABEL} вручную или нажмите «Сформировать ${ABR_LABEL}»`,
     },
     {
       id: 'nebosh',
       label: 'Оценка риска сформирована',
       ok: neboshReady,
-      hint: neboshReady ? undefined : 'Нажмите «Сформировать оценку риска» выше',
+      hint: neboshReady
+        ? undefined
+        : 'Заполните оценку риска вручную или нажмите «Сформировать оценку риска»',
     },
     {
       id: 'review',

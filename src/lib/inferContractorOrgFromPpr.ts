@@ -8,7 +8,7 @@ const LEGAL_ENTITY_PATTERN =
 const IP_LINE_PATTERN = /^(?:ИП)\s+[«"]?[^»"\n;]{2,80}[»"]?/i
 
 const GARBAGE_ORG =
-  /^(?:тип|выпуск|дата|номер|ред\.|статус|page|фио|должность|подпись)/i
+  /^(?:тип|выпуск|дата|номер|ред\.|статус|page|фио|должность|подпись|план|программа|ппр|method)/i
 
 type OrgParties = { customer: string; contractor: string }
 
@@ -24,7 +24,8 @@ function isPlausibleOrg(name: string): boolean {
   const t = name.trim()
   if (t.length < 2 || t.length > 120) return false
   if (GARBAGE_ORG.test(t)) return false
-  if (/выпуска|рассмотрени|документ/i.test(t)) return false
+  if (/выпуска|рассмотрени|документ|план\s+организаци|программ\s+производ|method\s+statement/i.test(t))
+    return false
   return true
 }
 
@@ -92,8 +93,20 @@ export function extractOrgPartiesFromText(text: string): OrgParties {
     .map((l) => l.trim())
     .filter(Boolean)
     .slice(0, 12)
-  if (!customer && headerLines[0] && /^[A-ZА-ЯЁ0-9][A-ZА-ЯЁ0-9\s.\-]{2,40}$/.test(headerLines[0])) {
-    if (!/ппр|план|ревиз|дата|тип|номер|выпуск/i.test(headerLines[0])) {
+  if (!customer) {
+    for (const line of headerLines) {
+      if (/подрядчик|бизнес[-\s]?партн|contractor|план|программ|ппр|method/i.test(line)) {
+        continue
+      }
+      const org = line.match(LEGAL_ENTITY_PATTERN)?.[0]
+      if (org && isPlausibleOrg(org)) {
+        customer = trimOrgName(org)
+        break
+      }
+    }
+  }
+  if (!customer && headerLines[0] && /^[A-ZА-ЯЁ0-9][A-ZА-ЯЁ0-9\s.\-«»"]{2,80}$/.test(headerLines[0])) {
+    if (!/ппр|план|ревиз|дата|тип|номер|выпуск|программ|method/i.test(headerLines[0])) {
       customer = trimOrgName(headerLines[0])
     }
   }
@@ -104,28 +117,43 @@ export function extractOrgPartiesFromText(text: string): OrgParties {
   return { customer, contractor }
 }
 
-function formatContractorOrg(parties: OrgParties): string {
-  const { customer, contractor } = parties
-  if (contractor && customer && contractor.toLowerCase() !== customer.toLowerCase()) {
-    return `${contractor} (заказчик ${customer})`
+/** Организация-заказчик для поля «Организация» в НДПР. */
+export function inferCustomerOrgFromText(text: string): string {
+  const hay = text.trim()
+  if (!hay) return ''
+
+  const { customer } = extractOrgPartiesFromText(hay)
+  if (customer) return customer
+
+  const uog = hay.match(/ТОО\s*[«"']?\s*Урал\s+Ойл\s+энд\s+Газ\s*[»"']?/i)
+  if (uog?.[0] && isPlausibleOrg(uog[0])) return trimOrgName(uog[0])
+
+  for (const line of hay.split('\n').slice(0, 80)) {
+    const org = takeOrgLabel(line, /^организация\s*[:：]\s*(.+)$/i)
+    if (org) return org
   }
-  return contractor || customer
+
+  for (const line of hay.split('\n').slice(0, 30)) {
+    if (/подрядчик|бизнес[-\s]?партн|contractor|исполнител/i.test(line)) continue
+    const org = line.match(LEGAL_ENTITY_PATTERN)?.[0]
+    if (org && isPlausibleOrg(org)) return org.trim()
+  }
+
+  return ''
 }
 
-function cleanOrgLine(line: string): string {
-  return line
-    .replace(/^(?:организация|подрядчик|contractor|исполнитель)\s*[:：]\s*/i, '')
-    .replace(/\s+/g, ' ')
-    .trim()
+export function inferCustomerOrgFromPpr(ppr: PprForm, docText?: string): string {
+  if (ppr.customerOrg.trim()) return ppr.customerOrg.trim()
+  return inferCustomerOrgFromText(buildPprTextHaystack(ppr, docText))
 }
 
-/** Извлекает организацию-исполнителя из шапки и текста ППР. */
+/** Извлекает организацию-подрядчика из шапки и текста ППР. */
 export function inferContractorOrgFromText(text: string): string {
   const hay = text.trim()
   if (!hay) return ''
 
-  const fromParties = formatContractorOrg(extractOrgPartiesFromText(hay))
-  if (fromParties.length >= 2) return fromParties
+  const { contractor } = extractOrgPartiesFromText(hay)
+  if (contractor) return contractor
 
   for (const line of hay.split('\n').slice(0, 50)) {
     const trimmed = line.trim()
@@ -150,7 +178,14 @@ export function inferContractorOrgFromText(text: string): string {
     return headerHit[0].trim()
   }
 
-  return fromParties
+  return ''
+}
+
+function cleanOrgLine(line: string): string {
+  return line
+    .replace(/^(?:организация|подрядчик|contractor|исполнитель)\s*[:：]\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 export function inferContractorOrgFromPpr(

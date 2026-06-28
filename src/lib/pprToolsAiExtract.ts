@@ -8,7 +8,7 @@ import {
   aiGenerateWithFileForExtraction,
   isAiClientReady,
 } from './aiClient'
-import { isPdfAttachment } from './pprGeminiPdfExtract'
+import { isPdfAttachment, isPprPdfAiReady } from './pprGeminiPdfExtract'
 import { parseControlMeasuresJson } from './pprControlMeasuresParse'
 import {
   filterToolsAgainstWorkTasks,
@@ -89,7 +89,7 @@ function itemsFromToolsPayload(raw: string): string[] {
   return parseToolsAndEquipmentList(raw)
 }
 
-/** Языковой анализ текста ППР — извлечение инструментов и оборудования через Claude/Gemini. */
+/** Языковой анализ текста ППР — извлечение инструментов через Claude. */
 export async function extractToolsAndEquipmentWithAi(
   docText: string,
   fileName: string,
@@ -104,11 +104,11 @@ export async function extractToolsAndEquipmentWithAi(
   return normalizeToolsAndEquipmentText(items.join('\n'))
 }
 
-/** Языковой анализ PDF ППР — только список инструментов и оборудования. */
+/** Языковой анализ PDF ППР — список инструментов (Claude multimodal). */
 export async function extractToolsAndEquipmentFromPdfWithAi(
   attachment: PprAttachment,
 ): Promise<string> {
-  if (!isAiClientReady() || !isPdfAttachment(attachment)) return ''
+  if (!isPprPdfAiReady() || !isPdfAttachment(attachment)) return ''
 
   const raw = await aiGenerateWithFileForExtraction({
     systemPrompt: PPR_TOOLS_EXTRACTION_SYSTEM_PROMPT,

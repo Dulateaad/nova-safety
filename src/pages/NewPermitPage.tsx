@@ -1,103 +1,384 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { PermitPhotoCapture } from '../components/PermitPhotoCapture'
+import { ToolsAndEquipmentField } from '../components/ToolsAndEquipmentField'
+import { WorkActivitiesField } from '../components/WorkActivitiesField'
+import {
+  enrichUserDirectoryWithDefaultSigners,
+  resolveDefaultNdprParticipantUids,
+  resolveNdprSignerUid,
+} from '../config/defaultNdprSigners'
+import { useLanguage } from '../context/LanguageContext'
 import { useSession } from '../context/SessionContext'
-import type {
-  PermitDraft,
-  SpecialWorkActivity,
-  UserRole,
-  WorkExecutor,
-  ZoneClass,
-} from '../types/domain'
+import { useToast } from '../context/ToastContext'
+import { fillTemplate } from '../i18n/getLocale'
+import { addOneCalendarMonthFromStart } from '../lib/calendarMonth'
 import {
-  ROLE_LABELS,
-  ZONE_CLASS_LABELS,
-  SPECIAL_WORK_ACTIVITY_LABELS,
-  SPECIAL_WORK_ACTIVITY_ORDER,
-  applySpecialWorkActivity,
-} from '../types/domain'
-import { addOneCalendarMonth } from '../lib/calendarMonth'
+  normalizeDatetimeLocalInput,
+  toDatetimeLocalInput,
+} from '../lib/datetimeLocal'
 import {
-  firstUnusedWorkerUid,
-  workerChoicesForRow,
-} from '../lib/directoryUsers'
-import { PTW_SITE_OPTIONS } from '../config/ptwSites'
+  mergeEnsuredWorkersIntoDirectory,
+  ensureDefaultWorkersClient,
+} from '../lib/ensureDefaultWorkers'
 import {
-  NEW_PERMIT_DRAFT_AUTOSAVE_KEY,
+  ensureDefaultNdprSignersClient,
+  type EnsureDefaultSignerAccount,
+} from '../lib/ensureDefaultNdprSigners'
+import { workerChoicesForRow } from '../lib/directoryUsers'
+import { isNdGatePassed, setNdGatePassed } from '../lib/ndGate'
+import {
+  mergePreparedNdprDraftForSession,
   restoreNewPermitDraftFromSession,
+  saveNewPermitDraftToSession,
 } from '../lib/newPermitDraftAutosave'
-import { setNdGatePassed } from '../lib/ndGate'
-import { clearPprGate } from '../lib/pprGate'
-import { clearPprForm } from '../lib/pprAutosave'
+import { clearPackageSession, PACKAGE_CLEARED_EVENT } from '../lib/packageSession'
+import { resolvePerformerUidForPackage } from '../lib/permitAccess'
+import {
+  loadPprForm,
+  pprHasNdprSource,
+  savePprForm,
+} from '../lib/pprAutosave'
+import { isPprGatePassed } from '../lib/pprGate'
+import { mergePermitDraftWithPpr } from '../lib/pprNdprExtract'
+import { nextBadgeNumberForPerformer } from '../lib/registrationNumber'
+import { resolvePprForNdpr } from '../lib/resolvePprForNdpr'
+import { resolveExecutorRows } from '../lib/resolveWorkerUid'
+import { resolveUserBadgeNo } from '../lib/userBadgeNumbers'
+import { permitRequiresErtApproval } from '../lib/fireWorkApproval'
+import {
+  permissionNoticesForActivities,
+} from '../lib/workPermissions'
+import {
+  MIN_NDPR_EXECUTORS,
+  prepareNdprDraftForValidation,
+  validateNdprDraft,
+} from '../lib/validateNdprDraft'
+import type { DemoUser, PermitDraft, UserRole } from '../types/domain'
+import {
+  applyWorkActivitiesToDraft,
+  ZONE_CLASS_LABELS,
+  type ZoneClass,
+} from '../types/domain'
+import { emptyPermitDraft } from '../uog/permitDefaults'
+import '../ndpr-page.css'
+
+const NDPR_SLOT_ROLES = {
+  performer: ['performer'],
+  permitter: ['permitter', 'coordinator'],
+  issuer: ['issuer', 'coordinator'],
+  leadExpert: ['leadExpert'],
+  ert: ['ert'],
+} as const satisfies Record<string, UserRole[]>
+
+type NdprSlot = keyof typeof NDPR_SLOT_ROLES
 
 function uid() {
   return crypto.randomUUID()
 }
 
-function usersForField(
-  directory: { id: string; displayName: string; role: UserRole }[],
-  roles: UserRole[],
-) {
-  const m = directory.filter((u) => roles.includes(u.role))
-  return m.length > 0 ? m : directory
+function usersForNdprSlot(
+  directory: DemoUser[],
+  slot: NdprSlot,
+  currentUid: string,
+): DemoUser[] {
+  const roles = NDPR_SLOT_ROLES[slot]
+  const pool = directory.filter((u) =>
+    (roles as readonly UserRole[]).includes(u.role),
+  )
+  const current = directory.find((u) => u.id === currentUid)
+  if (current && !pool.some((u) => u.id === current.id)) {
+    return [current, ...pool]
+  }
+  return pool.length > 0 ? pool : directory
 }
 
-function validateNdprDraft(draft: PermitDraft): string | null {
-  if (!draft.title.trim()) return 'Укажите наименование работ.'
-  if (!draft.siteName.trim()) return 'Выберите объект / локацию.'
-  if (!draft.workDescription.trim()) return 'Заполните описание работ.'
-  if (!draft.toolsAndEquipment.trim()) return 'Укажите инструменты и оборудование.'
-  return null
+function loadInitialPermitDraft(): PermitDraft {
+  try {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('fresh') === '1') {
+      clearPackageSession()
+      return emptyPermitDraft()
+    }
+    const fromPpr = params.get('from') === 'ppr'
+    const manual = params.get('manual') === '1'
+    if (fromPpr && manual) {
+      return emptyPermitDraft()
+    }
+    const base = fromPpr ? emptyPermitDraft() : restoreNewPermitDraftFromSession()
+    const ppr = loadPprForm()
+    let draft =
+      isPprGatePassed() || pprHasNdprSource(ppr)
+        ? mergePermitDraftWithPpr(base, ppr)
+        : base
+    if (fromPpr) {
+      draft = { ...draft, executors: [] }
+    }
+    return draft
+  } catch {
+    return emptyPermitDraft()
+  }
 }
 
 export function NewPermitPage() {
-  const { authMode, userDirectory } = useSession()
+  const { authMode, userDirectory, user, permits } = useSession()
+  const { showError } = useToast()
+  const { t } = useLanguage()
+  const pages = t.pages
+  const ndprPage = t.ndprPage
+  const ndprForm = t.ndprForm
+  const branding = t.branding
+  const common = t.common
   const nav = useNavigate()
-  const [draft, setDraft] = useState<PermitDraft>(() => restoreNewPermitDraftFromSession())
-  const [workerError, setWorkerError] = useState<string | null>(null)
-  const [submissionError, setSubmissionError] = useState<string | null>(null)
-  const seededParticipants = useRef(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [draft, setDraft] = useState<PermitDraft>(() => loadInitialPermitDraft())
+  const [signerAccounts, setSignerAccounts] = useState<EnsureDefaultSignerAccount[]>([])
+  const [workerAccounts, setWorkerAccounts] = useState<
+    Awaited<ReturnType<typeof ensureDefaultWorkersClient>>
+  >([])
+  const participantsSeeded = useRef(false)
+  const pprEnriched = useRef(false)
+  const skipSaveRef = useRef(false)
+  const draftRef = useRef(draft)
+  draftRef.current = draft
+  const participantsRef = useRef<HTMLDivElement>(null)
+
+  function resetDraft() {
+    skipSaveRef.current = true
+    participantsSeeded.current = false
+    pprEnriched.current = false
+    setDraft(emptyPermitDraft())
+    window.queueMicrotask(() => {
+      skipSaveRef.current = false
+    })
+  }
 
   useEffect(() => {
-    if (authMode !== 'firebase' || userDirectory.length === 0) return
-    if (seededParticipants.current) return
-    seededParticipants.current = true
-    const first = (roles: UserRole[]) =>
-      userDirectory.find((u) => roles.includes(u.role))?.id ??
-      userDirectory[0].id
-    setDraft((d) => ({
-      ...d,
-      issuerUid: first(['issuer', 'coordinator']),
-      permitterUid: first(['permitter', 'coordinator']),
-      performerUid: first(['performer', 'coordinator']),
-      leadExpertUid: first(['leadExpert', 'coordinator']),
-    }))
-  }, [authMode, userDirectory])
+    if (searchParams.get('fresh') !== '1') return
+    participantsSeeded.current = false
+    const sp = new URLSearchParams(searchParams)
+    sp.delete('fresh')
+    setSearchParams(sp, { replace: true })
+  }, [searchParams, setSearchParams])
 
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      try {
-        sessionStorage.setItem(NEW_PERMIT_DRAFT_AUTOSAVE_KEY, JSON.stringify(draft))
-      } catch {
-        /* storage full / private mode */
+  useLayoutEffect(() => {
+    if ('scrollRestoration' in history) {
+      history.scrollRestoration = 'manual'
+    }
+  }, [])
+
+  useLayoutEffect(() => {
+    if (searchParams.get('from') !== 'ppr') return
+    participantsSeeded.current = false
+    window.scrollTo({ top: 0, behavior: 'instant' in window ? ('instant' as ScrollBehavior) : 'auto' })
+    const sp = new URLSearchParams(searchParams)
+    sp.delete('from')
+    sp.delete('manual')
+    setSearchParams(sp, { replace: true })
+  }, [searchParams, setSearchParams])
+
+  const directory = useMemo(() => {
+    let list = enrichUserDirectoryWithDefaultSigners(userDirectory)
+    if (signerAccounts.length > 0) {
+      for (const account of signerAccounts) {
+        const existing = list.find((u) => u.id === account.uid)
+        if (existing) continue
+        list = [
+          ...list,
+          {
+            id: account.uid,
+            displayName: account.displayName,
+            email: account.email,
+            role: account.role as UserRole,
+            badgeNo: account.badgeNo,
+          },
+        ]
       }
+    }
+    if (workerAccounts?.length) {
+      list = mergeEnsuredWorkersIntoDirectory(list, workerAccounts)
+    }
+    return list
+  }, [userDirectory, signerAccounts, workerAccounts])
+
+  useEffect(() => {
+    if (authMode !== 'firebase' || (!isPprGatePassed() && !pprHasNdprSource(loadPprForm()))) {
+      return
+    }
+    let cancelled = false
+    void Promise.all([ensureDefaultNdprSignersClient(), ensureDefaultWorkersClient()])
+      .then(([signers, workers]) => {
+        if (cancelled) return
+        if (signers?.accounts?.length) {
+          setSignerAccounts(signers.accounts)
+          participantsSeeded.current = false
+        }
+        if (workers?.length) {
+          setWorkerAccounts(workers)
+          participantsSeeded.current = false
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [authMode])
+
+  useEffect(() => {
+    if (directory.length === 0) return
+    const ppr = loadPprForm()
+    if (
+      !(
+        isPprGatePassed() ||
+        pprHasNdprSource(ppr) ||
+        searchParams.get('from') === 'ppr'
+      ) ||
+      participantsSeeded.current
+    ) {
+      return
+    }
+    participantsSeeded.current = true
+    const defaults = resolveDefaultNdprParticipantUids(directory)
+    setDraft((d) => {
+      const performerUid = resolvePerformerUidForPackage(
+        resolveNdprSignerUid(directory, 'performer', d.performerUid) ||
+          defaults.performerUid,
+        user,
+        directory,
+      )
+      const badgeNo =
+        resolveUserBadgeNo(performerUid, directory) ||
+        nextBadgeNumberForPerformer(permits, performerUid)
+      return {
+        ...d,
+        performerUid,
+        permitterUid:
+          resolveNdprSignerUid(directory, 'permitter', d.permitterUid) ||
+          defaults.permitterUid,
+        issuerUid:
+          resolveNdprSignerUid(directory, 'issuer', d.issuerUid) || defaults.issuerUid,
+        leadExpertUid:
+          resolveNdprSignerUid(directory, 'leadExpert', d.leadExpertUid) ||
+          defaults.leadExpertUid,
+        ertUid: permitRequiresErtApproval(d) ? d.ertUid?.trim() || undefined : undefined,
+        executors: resolveExecutorRows(d.executors, directory),
+        f02: {
+          ...d.f02,
+          badgeNo: d.f02.badgeNo.trim() || badgeNo,
+        },
+        registrationRefNo: d.registrationRefNo.trim() || '',
+      }
+    })
+  }, [directory, permits, user?.id, user?.role, searchParams])
+
+  useEffect(() => {
+    if (directory.length === 0) return
+    setDraft((d) => {
+      const next = resolveExecutorRows(d.executors, directory)
+      if (next.some((row, i) => row.userUid !== d.executors[i]?.userUid)) {
+        return { ...d, executors: next }
+      }
+      return d
+    })
+  }, [directory])
+
+  useEffect(() => {
+    if (user?.role !== 'performer' || directory.length === 0) return
+    setDraft((d) => {
+      const performerUid = resolvePerformerUidForPackage(d.performerUid, user, directory)
+      const badgeNo = resolveUserBadgeNo(performerUid, directory)
+      const today = new Date().toISOString().slice(0, 10)
+      const nextF02 = { ...d.f02 }
+      if (badgeNo && nextF02.badgeNo !== badgeNo) nextF02.badgeNo = badgeNo
+      if (!nextF02.startDate.trim()) {
+        const startDate = `${today}T08:00`
+        nextF02.startDate = startDate
+        nextF02.endDate = addOneCalendarMonthFromStart(startDate)
+      }
+      const performerChanged = performerUid !== d.performerUid
+      const f02Changed =
+        nextF02.badgeNo !== d.f02.badgeNo ||
+        nextF02.startDate !== d.f02.startDate ||
+        nextF02.endDate !== d.f02.endDate
+      if (!performerChanged && !f02Changed) return d
+      return { ...d, performerUid, f02: nextF02 }
+    })
+  }, [user?.id, user?.role, directory])
+
+  useEffect(() => {
+    if (pprEnriched.current) return
+    const ppr = loadPprForm()
+    if (!pprHasNdprSource(ppr)) return
+    pprEnriched.current = true
+    void resolvePprForNdpr(ppr).then(({ ppr: enriched, docText }) => {
+      savePprForm(enriched)
+      setDraft((d) => {
+        const merged = mergePermitDraftWithPpr(d, enriched, { docText })
+        if (d.workStages.trim()) {
+          return {
+            ...merged,
+            workStages: d.workStages,
+            title: d.title.trim() || merged.title,
+          }
+        }
+        return merged
+      })
+    })
+  }, [])
+
+  useEffect(() => {
+    function onPackageCleared() {
+      resetDraft()
+    }
+    window.addEventListener(PACKAGE_CLEARED_EVENT, onPackageCleared)
+    return () => window.removeEventListener(PACKAGE_CLEARED_EVENT, onPackageCleared)
+  }, [])
+
+  useEffect(() => {
+    if (skipSaveRef.current) return
+    const t = window.setTimeout(() => {
+      if (!skipSaveRef.current) saveNewPermitDraftToSession(draft)
     }, 300)
-    return () => window.clearTimeout(t)
+    return () => {
+      window.clearTimeout(t)
+      if (!skipSaveRef.current) saveNewPermitDraftToSession(draftRef.current)
+    }
   }, [draft])
+
+  const preparedDraft = useMemo(
+    () => prepareNdprDraftForValidation(draft, user, directory),
+    [draft, user, directory],
+  )
+
+  const permissionTemplates = useMemo(
+    () => permissionNoticesForActivities(preparedDraft),
+    [preparedDraft],
+  )
+
+  const manualFill = !pprHasNdprSource(loadPprForm())
+  const f02 = draft.f02
+  const isProducer = user?.role === 'performer'
+
+  const canAddWorker = useMemo(() => {
+    const used = new Set(draft.executors.map((e) => e.userUid).filter(Boolean))
+    const pool = directory.filter((u) => u.role === 'executor')
+    return pool.some((u) => !used.has(u.id))
+  }, [draft.executors, directory])
 
   function addExecutor() {
     const used = new Set(draft.executors.map((e) => e.userUid).filter(Boolean))
-    const pick = firstUnusedWorkerUid(userDirectory, used)
-    if (!pick) return
-    const row: WorkExecutor = {
+    const pool = directory.filter((u) => u.role === 'executor')
+    if (!pool.some((u) => !used.has(u.id))) return
+    const row = {
       id: uid(),
-      userUid: pick,
+      userUid: '',
       dateIso: new Date().toISOString().slice(0, 10),
       briefingAcknowledged: false,
     }
     setDraft((d) => ({ ...d, executors: [...d.executors, row] }))
   }
 
-  function patchExecutor(id: string, patch: Partial<WorkExecutor>) {
+  function patchExecutor(id: string, patch: Partial<(typeof draft.executors)[number]>) {
     setDraft((d) => ({
       ...d,
       executors: d.executors.map((x) => (x.id === id ? { ...x, ...patch } : x)),
@@ -113,147 +394,106 @@ export function NewPermitPage() {
 
   function submitNdpr(e: React.FormEvent) {
     e.preventDefault()
-    setWorkerError(null)
-    setSubmissionError(null)
-
-    const v = validateNdprDraft(draft)
-    if (v) {
-      setSubmissionError(v)
+    const current = draftRef.current
+    const prepared = prepareNdprDraftForValidation(current, user, directory)
+    const err = validateNdprDraft(prepared)
+    if (err) {
+      showError(err)
       return
     }
-
-    if (draft.executors.some((ex) => !ex.userUid.trim())) {
-      setWorkerError('У каждого работника нужно выбрать пользователя из списка.')
-      return
-    }
-    const activeUids = draft.executors.map((ex) => ex.userUid).filter(Boolean)
+    const activeUids = prepared.executors.map((ex) => ex.userUid).filter(Boolean)
     if (new Set(activeUids).size !== activeUids.length) {
-      setWorkerError('Один и тот же работник не может быть указан в двух строках.')
+      showError(ndprPage.duplicateWorker)
       return
     }
-
-    try {
-      sessionStorage.setItem(NEW_PERMIT_DRAFT_AUTOSAVE_KEY, JSON.stringify(draft))
-    } catch {
-      /* ignore */
-    }
-
-    clearPprGate()
-    clearPprForm()
+    saveNewPermitDraftToSession(
+      mergePreparedNdprDraftForSession(current, prepared),
+    )
     setNdGatePassed()
-    nav('/ppr')
+    nav('/risk-assessment')
   }
 
-  const f02 = draft.f02
-
-  const issuerOptions = useMemo(
-    () =>
-      authMode === 'firebase'
-        ? usersForField(userDirectory, ['issuer', 'coordinator'])
-        : null,
-    [authMode, userDirectory],
-  )
-  const permitterOptions = useMemo(
-    () =>
-      authMode === 'firebase'
-        ? usersForField(userDirectory, ['permitter', 'coordinator'])
-        : null,
-    [authMode, userDirectory],
-  )
-  const performerOptions = useMemo(
-    () =>
-      authMode === 'firebase'
-        ? usersForField(userDirectory, ['performer', 'coordinator'])
-        : null,
-    [authMode, userDirectory],
-  )
-  const canAddWorker = useMemo(() => {
-    const used = new Set(draft.executors.map((e) => e.userUid).filter(Boolean))
-    return firstUnusedWorkerUid(userDirectory, used) !== null
-  }, [draft.executors, userDirectory])
-
-  const leadExpertOptions = useMemo(
-    () =>
-      authMode === 'firebase'
-        ? usersForField(userDirectory, ['leadExpert', 'coordinator'])
-        : null,
-    [authMode, userDirectory],
-  )
+  if (!isPprGatePassed()) {
+    return (
+      <div className="page narrow">
+        <h1>{pages.ndprTitle}</h1>
+        <p className="muted">{pages.ndprGatePpr}</p>
+        <div className="btn-row" style={{ marginTop: '0.75rem' }}>
+          <Link className="btn primary" to="/ppr">
+            {branding.sourceDocument}
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="page narrow">
-      <h1>НДПР</h1>
-      <p className="muted small page-subtitle" style={{ marginTop: '-0.5rem' }}>
-        Наряд-допуск на проведение работ — шаг 1 из 3
-      </p>
-
-      <div className="card" style={{ padding: '1rem 1.15rem', marginBottom: '1rem' }}>
-        <p className="muted small" style={{ margin: 0 }}>
-          Цепочка оформления: <strong>НДПР</strong> → <strong>ППР</strong> (задания 1, 2, …) →{' '}
-          <strong>АСОР</strong> (опасные факторы по каждому заданию). После заполнения каждого шага
-          нажмите кнопку внизу формы — откроется следующий раздел.
-        </p>
+    <div className="page narrow ndpr-page-top">
+      <div className="page-header">
+        <div>
+          <h1>{pages.ndprTitle}</h1>
+          <p className="muted small" style={{ marginTop: '-0.25rem' }}>
+            {pages.ndprStep2}
+          </p>
+        </div>
+        <div className="btn-row page-header__cta">
+          <Link className="btn ghost small" to="/ppr">
+            {branding.sourceDocument}
+          </Link>
+          {isNdGatePassed() ? (
+            <Link className="btn ghost small" to="/risk-assessment">
+              {t.nav.risk}
+            </Link>
+          ) : (
+            <span
+              className="btn ghost small"
+              style={{ opacity: 0.45, pointerEvents: 'none' }}
+              title={ndprPage.fillNdprFirst}
+            >
+              {t.nav.risk}
+            </span>
+          )}
+        </div>
       </div>
 
-      {submissionError && (
-        <div className="alert error" role="alert" style={{ marginBottom: '1rem' }}>
-          {submissionError}
-        </div>
-      )}
-
-      <form className="card form" onSubmit={submitNdpr}>
-        <label>
-          Организация
-          <input
-            value={f02.company}
-            onChange={(e) =>
-              setDraft({
-                ...draft,
-                f02: { ...f02, company: e.target.value },
-              })
-            }
-          />
-        </label>
-        <label>
-          Наименование работ
-          <input
-            required
-            value={draft.title}
-            onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-          />
-        </label>
-        <p className="muted xsmall" style={{ marginTop: '-0.25rem', marginBottom: '0.35rem' }}>
-          Регистрационный номер присваивается при отправке пакета на согласование.
-        </p>
-        <div className="row">
+      <form className="card form" onSubmit={submitNdpr} noValidate>
+        <fieldset className="fieldset ndpr-meta-fields">
+          <legend>{ndprForm.sourceDataLegend}</legend>
+          <p className="small muted" style={{ marginTop: 0 }}>
+            {manualFill ? ndprPage.manualFillHint : ndprPage.autoFillHint}
+          </p>
           <label>
-            Особые виды работ
-            <select
-              value={draft.specialWorkActivity}
-              onChange={(e) => {
-                const specialWorkActivity = e.target
-                  .value as SpecialWorkActivity
-                const derived = applySpecialWorkActivity(specialWorkActivity)
-                setDraft((d) => ({
-                  ...d,
-                  specialWorkActivity,
-                  permitType: derived.permitType,
-                  category: derived.category,
-                  f04:
-                    derived.permitType === 'cold' ? undefined : d.f04,
-                }))
-              }}
-            >
-              {SPECIAL_WORK_ACTIVITY_ORDER.map((key) => (
-                <option key={key} value={key}>
-                  {SPECIAL_WORK_ACTIVITY_LABELS[key]}
-                </option>
-              ))}
-            </select>
+            {ndprForm.organization}
+            <input
+              required
+              value={f02.company}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  f02: { ...f02, company: e.target.value },
+                })
+              }
+            />
           </label>
           <label>
-            Классификация зоны
+            {ndprForm.siteLocation}
+            <input
+              required
+              value={draft.siteName}
+              onChange={(e) => setDraft({ ...draft, siteName: e.target.value })}
+            />
+          </label>
+          <WorkActivitiesField
+            activities={draft.specialWorkActivities}
+            requiredPermissions={permissionTemplates}
+            onChange={(activities) =>
+              setDraft((d) => applyWorkActivitiesToDraft(d, activities))
+            }
+          />
+          <label>
+            {ndprForm.zoneClassification}
             <select
+              required
               value={draft.zoneClass}
               onChange={(e) =>
                 setDraft({
@@ -269,149 +509,155 @@ export function NewPermitPage() {
               ))}
             </select>
           </label>
-        </div>
-        <label>
-          Объект / локация
-          <select
-            required
-            value={draft.siteName}
-            onChange={(e) => setDraft({ ...draft, siteName: e.target.value })}
-          >
-            {PTW_SITE_OPTIONS.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Описание работ
-          <textarea
-            required
-            rows={4}
-            value={draft.workDescription}
-            onChange={(e) =>
-              setDraft({ ...draft, workDescription: e.target.value })
-            }
-          />
-        </label>
-        <label>
-          Инструменты и оборудование
-          <textarea
-            required
-            rows={3}
-            value={draft.toolsAndEquipment}
-            onChange={(e) =>
-              setDraft({ ...draft, toolsAndEquipment: e.target.value })
-            }
-            placeholder="Укажите применяемые инструменты, машины и средства..."
-          />
-        </label>
-        <fieldset className="fieldset">
-          <legend>
-            {authMode === 'firebase'
-              ? 'Участники (учётные записи)'
-              : 'Участники (демо-идентификаторы)'}
-          </legend>
-          <p className="small muted" style={{ marginTop: 0 }}>
-            Производитель работ, допускающий, выдающий и утверждающий НД — у каждой роли свой вход
-            для подписи.
-          </p>
-          <label>
-            1. Производитель работ
-            <select
-              value={draft.performerUid}
-              onChange={(e) =>
-                setDraft({ ...draft, performerUid: e.target.value })
-              }
-            >
-              {authMode === 'firebase' && performerOptions
-                ? performerOptions.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.displayName} — {ROLE_LABELS[u.role]}
-                    </option>
-                  ))
-                : (
-                    <>
-                      <option value="u-performer">Сидоров — ПР</option>
-                      <option value="u-coordinator">Админ</option>
-                    </>
-                  )}
-            </select>
-          </label>
-          <label>
-            2. Допускающий
-            <select
-              value={draft.permitterUid}
-              onChange={(e) =>
-                setDraft({ ...draft, permitterUid: e.target.value })
-              }
-            >
-              {authMode === 'firebase' && permitterOptions
-                ? permitterOptions.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.displayName} — {ROLE_LABELS[u.role]}
-                    </option>
-                  ))
-                : (
-                    <>
-                      <option value="u-permitter">Петров — допускающий</option>
-                      <option value="u-coordinator">Админ</option>
-                    </>
-                  )}
-            </select>
-          </label>
-          <label>
-            3. Выдающий НД
-            <select
-              value={draft.issuerUid}
-              onChange={(e) =>
-                setDraft({ ...draft, issuerUid: e.target.value })
-              }
-            >
-              {authMode === 'firebase' && issuerOptions
-                ? issuerOptions.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.displayName} — {ROLE_LABELS[u.role]}
-                    </option>
-                  ))
-                : (
-                    <>
-                      <option value="u-issuer">Иванов — выдающий</option>
-                      <option value="u-coordinator">Админ</option>
-                    </>
-                  )}
-            </select>
-          </label>
-          <label>
-            4. Утверждающий НД (подпись обязательна для категории 1)
-            <select
-              value={draft.leadExpertUid}
-              onChange={(e) =>
-                setDraft({ ...draft, leadExpertUid: e.target.value })
-              }
-            >
-              {authMode === 'firebase' && leadExpertOptions
-                ? leadExpertOptions.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.displayName} — {ROLE_LABELS[u.role]}
-                    </option>
-                  ))
-                : (
-                    <>
-                      <option value="u-lead">Утверждающий НД</option>
-                      <option value="u-coordinator">Админ</option>
-                    </>
-                  )}
-            </select>
-          </label>
         </fieldset>
 
+        <label>
+          {ndprForm.workTitle}
+          <input
+            required
+            value={draft.title}
+            onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+          />
+        </label>
+
+        <label>
+          {ndprForm.workStages}
+          <textarea
+            required
+            rows={14}
+            value={draft.workStages}
+            onChange={(e) => setDraft({ ...draft, workStages: e.target.value })}
+            placeholder={ndprForm.workStagesPlaceholder}
+          />
+        </label>
+
+        <ToolsAndEquipmentField
+          required
+          value={draft.toolsAndEquipment}
+          onChange={(toolsAndEquipment) =>
+            setDraft({ ...draft, toolsAndEquipment })
+          }
+        />
+
+        <div ref={participantsRef} className="ndpr-participants-scroll-target">
+          <fieldset className="fieldset">
+            <legend>{ndprForm.participantsLegend}</legend>
+            <p className="small muted" style={{ marginTop: 0 }}>
+              {ndprForm.participantsHint}
+            </p>
+            {permitRequiresErtApproval(draft) ? (
+              <p className="small muted" style={{ marginTop: 0 }}>
+                {ndprForm.ertApproverNote}
+              </p>
+            ) : null}
+            <label>
+              {ndprForm.signer1Performer}
+              <select
+                required
+                value={draft.performerUid}
+                onChange={(e) => {
+                  const performerUid = e.target.value
+                  const badgeNo = resolveUserBadgeNo(performerUid, directory)
+                  setDraft({
+                    ...draft,
+                    performerUid,
+                    f02: { ...f02, badgeNo: badgeNo || f02.badgeNo },
+                  })
+                }}
+              >
+                <option value="">{ndprForm.selectPlaceholder}</option>
+                {usersForNdprSlot(directory, 'performer', draft.performerUid).map(
+                  (u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.displayName}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+            <label>
+              {ndprForm.signer2Permitter}
+              <select
+                required
+                value={draft.permitterUid}
+                onChange={(e) =>
+                  setDraft({ ...draft, permitterUid: e.target.value })
+                }
+              >
+                <option value="">{ndprForm.selectPlaceholder}</option>
+                {usersForNdprSlot(directory, 'permitter', draft.permitterUid).map(
+                  (u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.displayName}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+            <label>
+              {ndprForm.signer3Issuer}
+              <select
+                required
+                value={draft.issuerUid}
+                onChange={(e) => setDraft({ ...draft, issuerUid: e.target.value })}
+              >
+                <option value="">{ndprForm.selectPlaceholder}</option>
+                {usersForNdprSlot(directory, 'issuer', draft.issuerUid).map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {ndprForm.signer4LeadExpert}
+              <select
+                required
+                value={draft.leadExpertUid}
+                onChange={(e) =>
+                  setDraft({ ...draft, leadExpertUid: e.target.value })
+                }
+              >
+                <option value="">{ndprForm.selectPlaceholder}</option>
+                {usersForNdprSlot(directory, 'leadExpert', draft.leadExpertUid).map(
+                  (u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.displayName}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+            {permitRequiresErtApproval(draft) ? (
+              <label>
+                {ndprForm.signer5Ert}
+                <select
+                  required
+                  value={draft.ertUid ?? ''}
+                  onChange={(e) =>
+                    setDraft({ ...draft, ertUid: e.target.value })
+                  }
+                >
+                  <option value="">{ndprForm.selectPlaceholder}</option>
+                  {usersForNdprSlot(directory, 'ert', draft.ertUid ?? '').map(
+                    (u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.displayName}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+            ) : null}
+          </fieldset>
+        </div>
+
+        {!isProducer ? (
         <fieldset className="fieldset">
-          <legend>Бланк НД — общие поля (F02)</legend>
+          <legend>{ndprForm.f02Legend}</legend>
           <div className="row">
             <label>
-              № пропуска / бейджа
+              {ndprForm.badgeNo}
               <input
                 value={f02.badgeNo}
                 onChange={(e) =>
@@ -423,40 +669,37 @@ export function NewPermitPage() {
               />
             </label>
             <label>
-              Смена
+              {ndprForm.shift}
               <select
                 value={f02.shift}
                 onChange={(e) =>
                   setDraft({
                     ...draft,
-                    f02: {
-                      ...f02,
-                      shift: e.target.value as typeof f02.shift,
-                    },
+                    f02: { ...f02, shift: e.target.value as typeof f02.shift },
                   })
                 }
               >
                 <option value="">—</option>
-                <option value="day">День</option>
-                <option value="night">Ночь</option>
+                <option value="day">{ndprForm.shiftDay}</option>
+                <option value="night">{ndprForm.shiftNight}</option>
               </select>
             </label>
           </div>
           <div className="row">
             <label>
-              Дата начала
+              {ndprForm.startDateTime}
               <input
-                type="date"
-                value={f02.startDate}
+                type="datetime-local"
+                value={toDatetimeLocalInput(f02.startDate)}
                 onChange={(e) => {
-                  const startDate = e.target.value
+                  const startDate = normalizeDatetimeLocalInput(e.target.value)
                   setDraft({
                     ...draft,
                     f02: {
                       ...f02,
                       startDate,
                       endDate: startDate
-                        ? addOneCalendarMonth(startDate)
+                        ? addOneCalendarMonthFromStart(startDate)
                         : f02.endDate,
                     },
                   })
@@ -464,113 +707,107 @@ export function NewPermitPage() {
               />
             </label>
             <label>
-              Дата окончания
+              {ndprForm.endDateTime}
               <input
-                type="date"
-                value={f02.endDate}
+                type="datetime-local"
+                value={toDatetimeLocalInput(f02.endDate)}
                 onChange={(e) =>
                   setDraft({
                     ...draft,
-                    f02: { ...f02, endDate: e.target.value },
+                    f02: {
+                      ...f02,
+                      endDate: normalizeDatetimeLocalInput(e.target.value),
+                    },
                   })
                 }
               />
             </label>
           </div>
         </fieldset>
+        ) : null}
 
-        <fieldset className="fieldset">
-          <legend>Работники</legend>
-          <p className="muted xsmall" style={{ marginTop: 0, marginBottom: '0.75rem' }}>
-            Строки F03 — добавляйте работников из справочника. Список переносится в АСОР.
-          </p>
-          {workerError && (
-            <div className="alert error" role="alert" style={{ marginBottom: '0.75rem' }}>
-              {workerError}
+        <fieldset className="fieldset ndpr-workers-fieldset">
+          <legend>{ndprForm.workersLegend}</legend>
+          {!isProducer ? (
+            <div className="ndpr-workers-fieldset__add">
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={addExecutor}
+                disabled={!canAddWorker}
+                title={!canAddWorker ? common.noWorkersAvailable : ''}
+              >
+                {ndprForm.addWorker}
+              </button>
             </div>
-          )}
-          <div className="btn-row" style={{ marginBottom: '0.75rem' }}>
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={addExecutor}
-              disabled={!canAddWorker}
-              title={
-                !canAddWorker ? 'Нет свободных учётных записей для добавления.' : ''
-              }
-            >
-              + Добавить работника
-            </button>
-          </div>
-          {draft.executors.length === 0 && (
-            <p className="small muted">
-              Добавьте хотя бы одного работника для бригады.
+          ) : (
+            <p className="small muted" style={{ marginTop: 0 }}>
+              {fillTemplate(ndprForm.workersProducerHint, { min: MIN_NDPR_EXECUTORS })}
             </p>
           )}
+          {draft.executors.length === 0 ? (
+            <p className="small muted" style={{ marginTop: 0 }}>
+              {fillTemplate(ndprForm.workersEmptyHint, { min: MIN_NDPR_EXECUTORS })}
+            </p>
+          ) : null}
           {draft.executors.map((ex) => (
-            <div
-              key={ex.id}
-              className="card"
-              style={{ marginBottom: '0.75rem', padding: '0.75rem' }}
-            >
-              <div className="row">
+            <div key={ex.id} className="ndpr-worker-row">
+              <label>
+                {ndprForm.fromUserList}
+                <select
+                  value={ex.userUid}
+                  onChange={(e) => patchExecutor(ex.id, { userUid: e.target.value })}
+                >
+                  <option value="">{ndprForm.selectPlaceholder}</option>
+                  {workerChoicesForRow(directory, draft.executors, ex.id).map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {!isProducer ? (
                 <label>
-                  Из списка пользователей
-                  <select
-                    value={ex.userUid}
-                    onChange={(e) =>
-                      patchExecutor(ex.id, { userUid: e.target.value })
-                    }
-                  >
-                    <option value="">— Выберите —</option>
-                    {workerChoicesForRow(userDirectory, draft.executors, ex.id).map(
-                      (u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.displayName}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </label>
-              </div>
-              <div className="row">
-                <label>
-                  Дата
+                  {ndprForm.date}
                   <input
                     type="date"
                     value={ex.dateIso}
-                    onChange={(e) =>
-                      patchExecutor(ex.id, { dateIso: e.target.value })
-                    }
+                    onChange={(e) => patchExecutor(ex.id, { dateIso: e.target.value })}
                   />
                 </label>
-                <label className="check" style={{ alignSelf: 'end' }}>
-                  <input
-                    type="checkbox"
-                    checked={ex.briefingAcknowledged}
-                    onChange={(e) =>
-                      patchExecutor(ex.id, {
-                        briefingAcknowledged: e.target.checked,
-                      })
-                    }
-                  />
-                  Целевой инструктаж
-                </label>
-              </div>
+              ) : null}
               <button
                 type="button"
-                className="btn ghost small"
+                className="btn ghost small ndpr-worker-row__remove"
                 onClick={() => removeExecutor(ex.id)}
               >
-                Удалить работника
+                {ndprForm.removeWorker}
               </button>
             </div>
           ))}
+          {isProducer ? (
+            <div className="ndpr-workers-fieldset__add">
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={addExecutor}
+                disabled={!canAddWorker}
+                title={!canAddWorker ? common.noWorkersAvailable : ''}
+              >
+                {ndprForm.addWorker}
+              </button>
+            </div>
+          ) : null}
         </fieldset>
+
+        <PermitPhotoCapture
+          photos={draft.sitePhotos ?? []}
+          onChange={(sitePhotos) => setDraft({ ...draft, sitePhotos })}
+        />
 
         <div className="actions">
           <button type="submit" className="btn primary">
-            Создать НДПР
+            {ndprForm.createButton}
           </button>
         </div>
       </form>

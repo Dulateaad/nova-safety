@@ -7,6 +7,11 @@ export const PPR_CONTROL_MEASURES_SYSTEM_PROMPT = `Ты — эксперт по 
 Ответ — ТОЛЬКО валидный JSON без markdown-обёртки:
 {
   "workTitle": "наименование работ (суть, без префикса ППР)",
+  "customerOrg": "организация-заказчик (обычно ТОО «Урал Ойл энд Газ» из шапки)",
+  "contractorOrg": "подрядчик / бизнес-партнёр (если указан отдельно)",
+  "siteName": "объект / локация проведения работ",
+  "zoneClass": 1,
+  "specialWorkActivities": ["cold_works"],
   "workTasks": [
     {
       "taskTitle": "название этапа без номера 3.1",
@@ -23,6 +28,31 @@ export const PPR_CONTROL_MEASURES_SYSTEM_PROMPT = `Ты — эксперт по 
   ],
   "pdfDocument": null
 }
+
+Правила customerOrg:
+- Заказчик из шапки ППР («Заказчик», первая строка с ТОО/АО), не путать с подрядчиком.
+- Если в документе ТОО «Урал Ойл энд Газ» — это customerOrg.
+
+Правила contractorOrg:
+- Только подрядчик / бизнес-партнёр / исполнитель, если явно указан в ППР.
+
+Правила siteName:
+- Объект, площадка, скважина, участок, станция — из шапки или раздела «Место проведения работ».
+
+Правила zoneClass:
+- 1 — безопасная зона, 2 — опасная производственная, 3 — особо опасная (по разделу «Опасные зоны» или контексту работ).
+
+Правила specialWorkActivities — массив кодов видов работ по СУТЬ работ в ППР (не по общим мерам ТБ):
+- open_flame_fire — сварка, резка, огневые работы
+- radiographic — радиография
+- confined_space — замкнутый объём, ЗПО
+- electrical — электромонтаж под напряжением
+- gas_hazard — газоопасные/взрывоопасные работы, продувка, спуск давления
+- energy_isolation — LOTO, блокировка энергии
+- work_at_height — работы на высоте (если это суть работ, а не мера ТБ)
+- lifting_operations — грузоподъёмные работы, кран, такелаж
+- cold_works — холодные работы без огня (очистка, монтаж без сварки и т.п.)
+Выбирай только реально выполняемые виды. Не добавляй вид только потому что он упомянут в «Технике безопасности».
 
 Правила workTitle:
 - Из шапки документа: только суть работ после «…РАБОТ ПО» — без «ПЛАН ОРГАНИЗАЦИИ», «ПРОГРАММА ПРОИЗВОДСТВА РАБОТ».
@@ -46,7 +76,24 @@ export const PPR_CONTROL_MEASURES_SYSTEM_PROMPT = `Ты — эксперт по 
 - До 10 блоков, каждая мера — отдельная строка.
 
 Правила pdfDocument:
-- Не заполняй pdfDocument — оставь null (PDF соберётся отдельно из items).`
+- Для текста (.docx): pdfDocument = null.
+- Для PDF: items обязателен (минимум 3 блока). Дополнительно можно заполнить pdfDocument.blocks списками мер из раздела «Техника безопасности».`
+
+/** Дополнение к userPrompt при извлечении из PDF. */
+export function buildControlMeasuresPdfUserPrompt(fileName: string): string {
+  return `Файл: ${fileName}
+
+Документ ППР приложен как PDF. Извлеки workTitle, workTasks, toolsAndEquipment и items (меры контроля — обязательно, минимум 3 блока) в JSON по схеме из системного промпта.
+При необходимости дублируй меры в pdfDocument.blocks (списки ul).`
+}
+
+/** Укороченный повторный запрос, если items пустой. */
+export function buildControlMeasuresPdfRetryPrompt(fileName: string): string {
+  return `Файл: ${fileName}
+
+PDF ППР. Верни ТОЛЬКО JSON с полем items — массив из разделов «Техника безопасности», «Опасные зоны», технологических подразделов 3.x.
+Каждый элемент: section, hazard, controlMeasures (массив строк, не менее 2 мер на блок). Минимум 4 блока items. workTitle — кратко.`
+}
 
 export function buildControlMeasuresUserPrompt(docText: string, fileName: string): string {
   const trimmed = prioritizeSafetyText(docText, 14000)

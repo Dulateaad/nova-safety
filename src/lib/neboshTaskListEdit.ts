@@ -1,4 +1,10 @@
-import { emptyTask, type AsorForm, type AsorTaskBlock } from '../types/asor'
+import {
+  emptyHazard,
+  emptyTask,
+  type AsorForm,
+  type AsorHazardRow,
+  type AsorTaskBlock,
+} from '../types/asor'
 
 function isGenericTaskTitle(title: string): boolean {
   const t = title.trim()
@@ -43,6 +49,41 @@ export function patchNeboshTask(
     tasks: renumberTasks(
       form.tasks.map((t, i) => (i === taskIndex ? { ...t, ...partial } : t)),
     ),
+  }
+}
+
+function renumberHazards(hazards: AsorHazardRow[]): AsorHazardRow[] {
+  return hazards.map((h, i) => ({ ...h, ordinal: i + 1 }))
+}
+
+export function addNeboshHazard(form: AsorForm, taskIndex: number): AsorForm {
+  return {
+    ...form,
+    tasks: form.tasks.map((t, ti) => {
+      if (ti !== taskIndex) return t
+      return {
+        ...t,
+        hazards: renumberHazards([...t.hazards, emptyHazard()]),
+      }
+    }),
+  }
+}
+
+export function removeNeboshHazard(
+  form: AsorForm,
+  taskIndex: number,
+  hazardId: string,
+): AsorForm {
+  return {
+    ...form,
+    tasks: form.tasks.map((t, ti) => {
+      if (ti !== taskIndex) return t
+      const next = t.hazards.filter((h) => h.id !== hazardId)
+      return {
+        ...t,
+        hazards: renumberHazards(next.length > 0 ? next : [emptyHazard()]),
+      }
+    }),
   }
 }
 

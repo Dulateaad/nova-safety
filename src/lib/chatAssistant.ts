@@ -1,5 +1,5 @@
 import { ASSISTANT_SYSTEM_PROMPT } from '../config/assistantSystemPrompt'
-import { geminiChat, isGeminiConfigured } from './geminiClient'
+import { claudeChat, isClaudeConfigured } from './claudeClient'
 
 export type UiChatTurn = {
   role: 'user' | 'assistant'
@@ -14,7 +14,7 @@ function chatUrl(): string | undefined {
 }
 
 export function isAssistantChatConfigured(): boolean {
-  return isGeminiConfigured() || Boolean(chatUrl())
+  return isClaudeConfigured() || Boolean(chatUrl())
 }
 
 function parseAssistantResponseJson(data: unknown): string | null {
@@ -34,18 +34,15 @@ function parseAssistantResponseJson(data: unknown): string | null {
   return null
 }
 
-/**
- * Чат-ассистент: приоритет Gemini API (`VITE_GEMINI_API_KEY`),
- * иначе POST на `VITE_AI_CHAT_URL`.
- */
+/** Чат-ассистент: Claude API или запасной VITE_AI_CHAT_URL. */
 export async function requestAssistantCompletion(
   history: UiChatTurn[],
   opts?: { idToken?: string | null; systemPrompt?: string },
 ): Promise<string> {
   const systemPrompt = opts?.systemPrompt?.trim() || ASSISTANT_SYSTEM_PROMPT
 
-  if (isGeminiConfigured()) {
-    return geminiChat({ systemPrompt, history })
+  if (isClaudeConfigured()) {
+    return claudeChat({ systemPrompt, history })
   }
 
   const url = chatUrl()

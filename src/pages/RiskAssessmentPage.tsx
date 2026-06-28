@@ -1,120 +1,217 @@
-import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { PTW_SITE_OPTIONS } from '../config/ptwSites'
-import type {
-  AsorEmergencySelections,
-  AsorForm,
-  AsorPermitDocuments,
-  AsorPpeSelections,
-  AsorTaskBlock,
-  AsorHazardRow,
-} from '../types/asor'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useSession } from '../context/SessionContext'
+import { useToast } from '../context/ToastContext'
+import { finalizeAsorFormForReady } from '../lib/finalizeGeneratedRiskDocs'
+import { applyAsorToPermitDraft } from '../lib/asorPrefill'
+import { seedApprovalNamesFromPermit } from '../lib/approvalSequence'
+import { isNdGatePassed, setNdGatePassed, clearNdGate } from '../lib/ndGate'
+import { isPprGatePassed } from '../lib/pprGate'
+import { loadPprForm } from '../lib/pprAutosave'
+import { openPprAttachmentInBrowser } from '../lib/pprAttachment'
+import { prefillAsorTeamFromNd } from '../lib/pprAsorPrefill'
+import { restoreNewPermitDraftFromSession } from '../lib/newPermitDraftAutosave'
+import { clearPackageSession, PACKAGE_CLEARED_EVENT } from '../lib/packageSession'
 import {
-  ASOR_EDITION_META,
-  ASOR_PENDING_FOR_PERMIT_KEY,
-  ASOR_EDITOR_AUTOSAVE_KEY,
-  ASOR_PROCEDURE_REFS_DISPLAY,
-  ASOR_TASK_RESIDUAL_LABELS,
-  MATRIX_CELL_RISK_LABELS,
-  MATRIX_LIKELIHOOD_LABELS,
-  MATRIX_SEVERITY_LABELS,
-  deriveRiskFromMatrix,
-  emptyAsorForm,
-  emptyHazard,
-  emptyPersonRow,
-  emptyTask,
-  normalizeAsorIncoming,
-} from '../types/asor'
+  readResumePermitId,
+  packageDraftToPermitFields,
+} from '../lib/resumePermitPackage'
+import { setRiskGatePassed } from '../lib/riskGate'
+import {
+  initializeWorkPermissionsBundle,
+  requiresWorkPermissions,
+  wizardStepCount,
+} from '../lib/workPermissions'
+import { saveWorkPermissionsToSession } from '../lib/workPermissionsAutosave'
+import { preloadPackagePdfEngine } from '../lib/buildPackagePdf'
+import { applyNeboshAssessmentToAsor } from '../lib/applyNeboshAssessmentToAsor'
+import { buildAbrPdf } from '../lib/buildAbrPdf'
+import { buildNeboshRiskPdf } from '../lib/buildNeboshRiskPdf'
+import { openPdfInBrowser, pdfTabTitleFromFileName } from '../lib/pdfPreview'
+import { generateAbrFromPpr, isAbrAiAvailable } from '../lib/generateAbrFromPpr'
+import {
+  applyAbrHeaderFromPprNd,
+  mergeAbrPeopleFromNd,
+  prefillAbrPeopleFromNd,
+} from '../lib/prefillAbrFromPackage'
+import { mergeNeboshApprovalPeopleFromNd } from '../lib/ndprApprovalPeople'
+import {
+  generateNeboshRiskAssessmentFromPpr,
+  isNeboshAiAvailable,
+} from '../lib/generateNeboshRiskAssessment'
+import { AbrManualReview } from '../components/AbrManualReview'
+import { LoadingProgress } from '../components/LoadingProgress'
+import { NeboshManualReview } from '../components/NeboshManualReview'
+import { ABR_LABEL, APP_NAME, SOURCE_DOCUMENT_LABEL } from '../config/branding'
+import { useLanguage } from '../context/LanguageContext'
+import { resolveUserBadgeNo } from '../lib/userBadgeNumbers'
+import { enrichParticipantDirectory } from '../lib/resolveDirectoryPerson'
+import { validateAsorForm, isRiskAssessmentReady, isAbrReady } from '../lib/validateAsorForm'
+import {
+  canUserSubmitPermitPackage,
+  resolvePerformerUidForPackage,
+  submitPermitPackageDeniedReason,
+} from '../lib/permitAccess'
+import { getPackageSubmitRequirements } from '../lib/packageSubmitRequirements'
+import {
+  prepareNdprDraftForValidation,
+  validateNdprDraft,
+} from '../lib/validateNdprDraft'
+import type { AsorForm } from '../types/asor'
+import type { AbrForm } from '../types/abr'
+import { emptyAbrForm } from '../types/abr'
+import { ASOR_EDITOR_AUTOSAVE_KEY, emptyAsorForm } from '../types/asor'
+import '../risk-assessment-page.css'
+import {
+  buildManualRiskAssessmentForm,
+  ensureManualRiskScaffold,
+  loadRiskAssessmentForm,
+} from '../lib/initRiskAssessmentForm'
 
-/** Галочки СИЗ/мер (стр. 1). */
-const PPE_TOGGLE_FIELDS: {
-  field: keyof AsorPpeSelections
-  label: string
-  group?: string
-}[] = [
-  { group: '1. Защита лица и головы', field: 'faceShield', label: 'Лицевой щиток' },
-  { field: 'arboristHelmet', label: 'Каска для лесомонтажников' },
-  { field: 'helmetPainting', label: 'Тип шлема: лакокрасочные работы' },
-  { field: 'helmetWelding', label: 'Тип шлема: сварочные работы' },
-  {
-    group: '2. Глаза',
-    field: 'eyeChem',
-    label: 'Химзащитные очки',
-  },
-  { field: 'eyeCuttingGrinding', label: 'Очки для резки / шлифработ' },
-  { group: '3. Слух', field: 'hearEarplugs', label: 'Беруши' },
-  { field: 'hearMuffs', label: 'Наушники' },
-  { group: '4. Органы дыхания', field: 'respDustMask', label: 'Пылезащитная маска' },
-  { field: 'respCascade', label: 'Каскад' },
-  { field: 'respSCBA', label: 'ВДА' },
-  { field: 'respiratorTypeNote', label: 'Респиратор (тип — в поле справа)' },
-  {
-    group: '5–11. Прочее',
-    field: 'fallHarnessSystem',
-    label: 'Индивидуальная страховочная система от падения',
-  },
-  { field: 'clothingDisposable', label: 'Одежда одноразовая' },
-  { field: 'clothRainSuits', label: 'Дождевики' },
-  { field: 'clothChem', label: 'Химзащитный комплект одежды' },
-  { field: 'clothWelding', label: 'Одежда для сварки' },
-  { field: 'apronLeather', label: 'Фартук кожаный' },
-  { field: 'apronChem', label: 'Фартук химзащитный' },
-  { field: 'glovesCotton', label: 'Перчатки хлопок' },
-  { field: 'glovesLeather', label: 'Перчатки кожа' },
-  { field: 'glovesChem', label: 'Перчатки химзащитные' },
-  { field: 'glovesWelding', label: 'Перчатки для сварки' },
-  { field: 'glovesDielectric', label: 'Перчатки диэлектрические' },
-  { field: 'feetDielectricBoots', label: 'Сапоги диэлектрические' },
-  { field: 'feetRubberBoots', label: 'Резиновые сапоги' },
-  { field: 'signsHearing', label: 'Знак: защита слуха' },
-  { field: 'signsDroppedObjects', label: 'Знак: падающие предметы' },
-  { field: 'signsRadiography', label: 'Знак: рентген' },
-  { field: 'signsN2Blowdown', label: 'Знак: продувка N₂' },
-  { field: 'fenceDangerArea', label: 'Ограждение: опасный участок' },
-  { field: 'fenceGasWorks', label: 'Ограждение: газоопасные работы' },
-  { field: 'extraRadioOther', label: 'Рация / канал' },
-]
-
-const PERMIT_LINES: {
-  field: Exclude<keyof AsorPermitDocuments, 'otherDocsLine'>
-  label: string
-}[] = [
-  { field: 'narjadPermit', label: 'Наряд-допуск' },
-  { field: 'electricalInstallationPermit', label: 'Работы в электроустановках' },
-  { field: 'fireWorks', label: 'Огневые работы' },
-  { field: 'pidDiagram', label: 'P&ID' },
-  { field: 'gasHazardWorks', label: 'Газоопасные работы' },
-  {
-    field: 'hazardousEnergyIsolation',
-    label: 'Изоляция источников опасной энергии',
-  },
-  { field: 'radiographyWorks', label: 'Радиография' },
-  { field: 'liftingOperationsPlan', label: 'План грузоподъёмных операций' },
-  { field: 'excavationPlan', label: 'План земляных работ' },
-  { field: 'confinedSpacePermit', label: 'Работы в ЗПО (замкнутый объём)' },
-  { field: 'simultaneousOpsSIMOPSPlan', label: 'План ОПР / SIMOPS' },
-]
+type RiskSectionMode = 'manual' | 'generate'
 
 export function RiskAssessmentPage() {
   const nav = useNavigate()
+  const location = useLocation()
+  const { t } = useLanguage()
+  const p = t.pages
+  const rp = t.riskPage
+  const { createPermit, updatePermit, transition, resolveUser, user, userDirectory } = useSession()
+  const { showError } = useToast()
   const [form, setForm] = useState<AsorForm>(() => emptyAsorForm())
   const [boot, setBoot] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitStage, setSubmitStage] = useState<string | null>(null)
+  const [abrPdfBusy, setAbrPdfBusy] = useState(false)
+  const [abrGenBusy, setAbrGenBusy] = useState(false)
+  const [abrGenError, setAbrGenError] = useState<string | null>(null)
+  const [abrGenNote, setAbrGenNote] = useState<string | null>(null)
+  const [neboshPdfBusy, setNeboshPdfBusy] = useState(false)
+  const [neboshGenBusy, setNeboshGenBusy] = useState(false)
+  const [neboshGenError, setNeboshGenError] = useState<string | null>(null)
+  const [neboshGenNote, setNeboshGenNote] = useState<string | null>(null)
+  const [manualReviewConfirmed, setManualReviewConfirmed] = useState(false)
+  const [abrSectionMode, setAbrSectionMode] = useState<RiskSectionMode>('manual')
+  const [riskSectionMode, setRiskSectionMode] = useState<RiskSectionMode>('manual')
+  const [abrReviewOpen, setAbrReviewOpen] = useState(false)
+  const [neboshReviewOpen, setNeboshReviewOpen] = useState(false)
+  const suppressAutosaveRef = useRef(false)
+
+  const resolveBadge = (uid: string) => resolveUserBadgeNo(uid, userDirectory)
+
+  const participantDirectory = useMemo(
+    () => enrichParticipantDirectory(userDirectory),
+    [userDirectory],
+  )
+
+  const neboshHazardCount = form.tasks.reduce((n, t) => n + t.hazards.length, 0)
+  const abrReady = isAbrReady(form)
+  const neboshReady = isRiskAssessmentReady(form)
+  const maySubmitPackage = canUserSubmitPermitPackage(user)
+  const ndDraft = useMemo(
+    () =>
+      prepareNdprDraftForValidation(
+        restoreNewPermitDraftFromSession(),
+        user,
+        participantDirectory,
+      ),
+    [user, participantDirectory, location.key],
+  )
+  const ndprAccessible = useMemo(
+    () => validateNdprDraft(ndDraft) === null,
+    [ndDraft],
+  )
+
+  const submitRequirements = useMemo(
+    () =>
+      getPackageSubmitRequirements({
+        user,
+        form,
+        manualReviewConfirmed,
+        ndDraft,
+      }),
+    [user, form, manualReviewConfirmed, ndDraft],
+  )
+  const permissionsRequired = requiresWorkPermissions(ndDraft)
+  const wizardSteps = wizardStepCount(ndDraft)
+  const canProceedRisk =
+    maySubmitPackage &&
+    abrReady &&
+    neboshReady &&
+    manualReviewConfirmed &&
+    !busy &&
+    submitRequirements.every((r) => r.ok)
+  const canSubmit = canProceedRisk
+
+  const pprAttachment = useMemo(() => loadPprForm().attachment, [ndDraft.title])
 
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(ASOR_EDITOR_AUTOSAVE_KEY)
-      if (raw) {
-        const m = normalizeAsorIncoming(JSON.parse(raw))
-        if (m) setForm(m)
-      }
-    } catch {
-      /* ignore */
-    }
+    preloadPackagePdfEngine()
+  }, [])
+
+  useEffect(() => {
+    const nd = prepareNdprDraftForValidation(
+      restoreNewPermitDraftFromSession(),
+      user,
+      participantDirectory,
+    )
+    const ppr = loadPprForm()
+    const resolveName = (uid: string) => resolveUser(uid)?.displayName ?? uid
+    const saved = loadRiskAssessmentForm()
+    const base =
+      saved ??
+      buildManualRiskAssessmentForm(nd, ppr, resolveName, (uid) =>
+        resolveUserBadgeNo(uid, userDirectory),
+      )
+    setForm(
+      ensureManualRiskScaffold(
+        base,
+        nd,
+        ppr,
+        resolveName,
+        (uid) => resolveUserBadgeNo(uid, userDirectory),
+      ),
+    )
     setBoot(false)
   }, [])
 
   useEffect(() => {
     if (boot) return
+    const prepared = prepareNdprDraftForValidation(
+      restoreNewPermitDraftFromSession(),
+      user,
+      participantDirectory,
+    )
+    if (validateNdprDraft(prepared)) {
+      clearNdGate()
+    } else {
+      setNdGatePassed()
+    }
+    const nd = prepared
+    const resolveName = (uid: string) => resolveUser(uid)?.displayName ?? uid
+    setForm((current) => {
+      let next = current
+      if (current.abr?.stages.length) {
+        next = {
+          ...next,
+          abr: mergeAbrPeopleFromNd(
+            current.abr,
+            nd,
+            resolveName,
+            resolveBadge,
+          ),
+        }
+      }
+      if (isRiskAssessmentReady(current) || current.tasks.length > 0) {
+        next = mergeNeboshApprovalPeopleFromNd(next, nd, resolveName, resolveBadge)
+      }
+      return next
+    })
+  }, [boot, participantDirectory, user?.id, user?.role])
+
+  useEffect(() => {
+    if (boot || suppressAutosaveRef.current) return
     try {
       sessionStorage.setItem(ASOR_EDITOR_AUTOSAVE_KEY, JSON.stringify(form))
     } catch {
@@ -122,135 +219,370 @@ export function RiskAssessmentPage() {
     }
   }, [form, boot])
 
-  function patch(patch: Partial<AsorForm>) {
-    setForm((f) => ({ ...f, ...patch }))
+  async function generateAbrFromPprDoc() {
+    const ppr = loadPprForm()
+    if (!ppr.controlMeasures?.items.length && !ppr.workStagesText.trim()) {
+      setAbrGenError(`Сначала загрузите ${SOURCE_DOCUMENT_LABEL} и дождитесь извлечения данных.`)
+      return
+    }
+    setAbrGenBusy(true)
+    setAbrGenError(null)
+    setAbrGenNote(null)
+    try {
+      const nd = restoreNewPermitDraftFromSession()
+      const resolveName = (uid: string) => resolveUser(uid)?.displayName ?? uid
+      const abr = mergeAbrPeopleFromNd(
+        await generateAbrFromPpr(ppr, {
+          nd,
+          resolveName,
+          resolveBadge,
+        }),
+        nd,
+        resolveName,
+        resolveBadge,
+      )
+      setForm((f) => ({
+        ...f,
+        abr,
+        shortTitleForNarjad: f.shortTitleForNarjad || ppr.workTitle.trim(),
+        workPlacesText: f.workPlacesText || abr.workLocation,
+      }))
+      setAbrGenNote(
+        `${ABR_LABEL} сформирован (${APP_NAME}): ${abr.stages.length} этап(ов). Нажмите «Посмотреть».`,
+      )
+      setAbrReviewOpen(true)
+      setManualReviewConfirmed(false)
+    } catch (e) {
+      setAbrGenError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setAbrGenBusy(false)
+    }
   }
 
-  function patchPpe(patch: Partial<AsorPpeSelections>) {
-    setForm((f) => ({ ...f, ppe: { ...f.ppe, ...patch } }))
+  async function generateNeboshFromPpr() {
+    const ppr = loadPprForm()
+    if (!ppr.controlMeasures?.items.length && !ppr.workStagesText.trim()) {
+      setNeboshGenError(`Сначала загрузите ${SOURCE_DOCUMENT_LABEL} и дождитесь извлечения данных.`)
+      return
+    }
+    setNeboshGenBusy(true)
+    setNeboshGenError(null)
+    setNeboshGenNote(null)
+    try {
+      const nd = restoreNewPermitDraftFromSession()
+      const resolveName = (uid: string) => resolveUser(uid)?.displayName ?? uid
+      const preparedBy = nd.performerUid.trim()
+        ? resolveName(nd.performerUid)
+        : user?.displayName?.trim() || ''
+      const contractorOrg = nd.f02?.company?.trim() || ppr.contractorOrg
+      const payload = await generateNeboshRiskAssessmentFromPpr(ppr, {
+        preparedBy,
+        contractorOrg,
+      })
+      setForm((current) =>
+        mergeNeboshApprovalPeopleFromNd(
+          applyNeboshAssessmentToAsor(
+            prefillAsorTeamFromNd(nd, current, resolveName),
+            payload,
+          ),
+          nd,
+          resolveName,
+          resolveBadge,
+        ),
+      )
+      const groups = payload.operationGroups?.length ?? 0
+      const hazards = (payload.operationGroups ?? []).reduce(
+        (n, g) => n + (g.hazards?.length ?? 0),
+        0,
+      )
+      setNeboshGenNote(
+        `Оценка риска сформирована (${APP_NAME}): ${groups} заданий, ${hazards} опасностей. Нажмите «Посмотреть».`,
+      )
+      setNeboshReviewOpen(true)
+      setManualReviewConfirmed(false)
+    } catch (e) {
+      setNeboshGenError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setNeboshGenBusy(false)
+    }
   }
 
-  function patchDocs(patch: Partial<AsorPermitDocuments>) {
-    setForm((f) => ({
-      ...f,
-      permitDocuments: { ...f.permitDocuments, ...patch },
-    }))
+  async function viewAbrPdfDoc() {
+    if (!form.abr?.stages.length) {
+      showError(`Сформируйте ${ABR_LABEL} из исходного документа.`)
+      return
+    }
+    setAbrPdfBusy(true)
+    try {
+      const ppr = loadPprForm()
+      const nd = restoreNewPermitDraftFromSession()
+      const resolveName = (uid: string) => resolveUser(uid)?.displayName ?? uid
+      const abr = mergeAbrPeopleFromNd(
+        applyAbrHeaderFromPprNd(
+          { ...form.abr, ...prefillAbrPeopleFromNd(nd, resolveName, resolveBadge) },
+          ppr,
+          nd,
+        ),
+        nd,
+        resolveName,
+        resolveBadge,
+      )
+      const { base64, fileName } = await buildAbrPdf(abr)
+      openPdfInBrowser(base64, pdfTabTitleFromFileName(fileName))
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setAbrPdfBusy(false)
+    }
   }
 
-  function patchEmergency(patch: Partial<AsorEmergencySelections>) {
-    setForm((f) => ({ ...f, emergency: { ...f.emergency, ...patch } }))
-  }
-
-  function addTask() {
-    setForm((f) => ({
-      ...f,
-      tasks: [...f.tasks, emptyTask(f.tasks.length + 1)],
-    }))
-  }
-
-  function patchTask(taskId: string, patch: Partial<AsorTaskBlock>) {
-    setForm((f) => ({
-      ...f,
-      tasks: f.tasks.map((t) => (t.id === taskId ? { ...t, ...patch } : t)),
-    }))
-  }
-
-  function addHazard(taskId: string) {
-    setForm((f) => ({
-      ...f,
-      tasks: f.tasks.map((t) =>
-        t.id !== taskId
-          ? t
-          : {
-              ...t,
-              hazards: [...t.hazards, { ...emptyHazard(), ordinal: t.hazards.length + 1 }],
-            },
-      ),
-    }))
-  }
-
-  function patchHazard(
-    taskId: string,
-    hazardId: string,
-    patch: Partial<AsorHazardRow>,
-  ) {
-    setForm((f) => ({
-      ...f,
-      tasks: f.tasks.map((t) =>
-        t.id !== taskId
-          ? t
-          : {
-              ...t,
-              hazards: t.hazards.map((h) =>
-                h.id !== hazardId ? h : { ...h, ...patch },
-              ),
-            },
-      ),
-    }))
-  }
-
-  function removeHazard(taskId: string, hazardId: string) {
-    setForm((f) => ({
-      ...f,
-      tasks: f.tasks.map((t) =>
-        t.id !== taskId
-          ? t
-          : {
-              ...t,
-              hazards: t.hazards.filter((h) => h.id !== hazardId),
-            },
-      ),
-    }))
-  }
-
-  function addTeamParticipant() {
-    setForm((f) => ({
-      ...f,
-      declarationTeamRows: [...f.declarationTeamRows, emptyPersonRow()],
-    }))
-  }
-
-  function patchTeam(idx: number, patch: Partial<(typeof form.declarationTeamRows)[0]>) {
-    setForm((f) => ({
-      ...f,
-      declarationTeamRows: f.declarationTeamRows.map((row, i) =>
-        i === idx ? { ...row, ...patch } : row,
-      ),
-    }))
-  }
-
-  function patchShift(idx: number, patch: Partial<(typeof form.shiftTakeoverMembers)[0]>) {
-    setForm((f) => ({
-      ...f,
-      shiftTakeoverMembers: f.shiftTakeoverMembers.map((row, i) =>
-        i === idx ? { ...row, ...patch } : row,
-      ),
-    }))
-  }
-
-  function patchApproval(
-    roleKey: (typeof form.approvals)[0]['roleKey'],
-    patch: Partial<(typeof form.approvals)[0]>,
-  ) {
-    setForm((f) => ({
-      ...f,
-      approvals: f.approvals.map((a) =>
-        a.roleKey === roleKey ? { ...a, ...patch } : a,
-      ),
-    }))
-  }
-
-  function gotoNewPermit() {
-    sessionStorage.setItem(ASOR_PENDING_FOR_PERMIT_KEY, JSON.stringify(form))
-    nav('/new', { state: { asor: form } })
+  async function viewNeboshPdf() {
+    if (!neboshReady) {
+      setSubmitError('Заполните оценку риска вручную или сформируйте из ППР.')
+      return
+    }
+    setNeboshPdfBusy(true)
+    try {
+      const nd = restoreNewPermitDraftFromSession()
+      const resolveName = (uid: string) => resolveUser(uid)?.displayName ?? uid
+      const merged = mergeNeboshApprovalPeopleFromNd(
+        form,
+        nd,
+        resolveName,
+        resolveBadge,
+      )
+      const title =
+        merged.shortTitleForNarjad.trim() ||
+        loadPprForm().workTitle.trim() ||
+        'Оценка рисков'
+      const { base64, fileName } = await buildNeboshRiskPdf(merged, title)
+      openPdfInBrowser(base64, pdfTabTitleFromFileName(fileName))
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setNeboshPdfBusy(false)
+    }
   }
 
   function resetDraft() {
-    setForm(emptyAsorForm())
-    sessionStorage.removeItem(ASOR_EDITOR_AUTOSAVE_KEY)
+    suppressAutosaveRef.current = true
+    clearPackageSession()
+    const nd = prepareNdprDraftForValidation(
+      restoreNewPermitDraftFromSession(),
+      user,
+      participantDirectory,
+    )
+    const ppr = loadPprForm()
+    const resolveName = (uid: string) => resolveUser(uid)?.displayName ?? uid
+    setForm(
+      ensureManualRiskScaffold(
+        buildManualRiskAssessmentForm(nd, ppr, resolveName, (uid) =>
+          resolveUserBadgeNo(uid, userDirectory),
+        ),
+        nd,
+        ppr,
+        resolveName,
+        (uid) => resolveUserBadgeNo(uid, userDirectory),
+      ),
+    )
+    setSubmitError(null)
+    setManualReviewConfirmed(false)
+    setAbrGenError(null)
+    setAbrGenNote(null)
+    setNeboshGenError(null)
+    setNeboshGenNote(null)
+    setAbrSectionMode('manual')
+    setRiskSectionMode('manual')
+    setAbrReviewOpen(false)
+    setNeboshReviewOpen(false)
+    window.queueMicrotask(() => {
+      suppressAutosaveRef.current = false
+    })
   }
 
-  const matrixRisk = deriveRiskFromMatrix(form.matrixLikelihood, form.matrixSeverity)
+  useEffect(() => {
+    function onPackageCleared() {
+      suppressAutosaveRef.current = true
+      const nd = prepareNdprDraftForValidation(
+        restoreNewPermitDraftFromSession(),
+        user,
+        participantDirectory,
+      )
+      const ppr = loadPprForm()
+      const resolveName = (uid: string) => resolveUser(uid)?.displayName ?? uid
+      setForm(
+        ensureManualRiskScaffold(
+          buildManualRiskAssessmentForm(nd, ppr, resolveName, (uid) =>
+            resolveUserBadgeNo(uid, userDirectory),
+          ),
+          nd,
+          ppr,
+          resolveName,
+          (uid) => resolveUserBadgeNo(uid, userDirectory),
+        ),
+      )
+      setSubmitError(null)
+      setManualReviewConfirmed(false)
+      setAbrGenError(null)
+      setAbrGenNote(null)
+      setNeboshGenError(null)
+      setNeboshGenNote(null)
+      setAbrSectionMode('manual')
+      setRiskSectionMode('manual')
+      setAbrReviewOpen(false)
+      setNeboshReviewOpen(false)
+      window.queueMicrotask(() => {
+        suppressAutosaveRef.current = false
+      })
+    }
+    window.addEventListener(PACKAGE_CLEARED_EVENT, onPackageCleared)
+    return () => window.removeEventListener(PACKAGE_CLEARED_EVENT, onPackageCleared)
+  }, [])
+
+  function updateAbr(abr: AbrForm) {
+    setForm((f) => ({ ...f, abr }))
+    setManualReviewConfirmed(false)
+  }
+
+  function updateFormReview(next: AsorForm) {
+    setForm(next)
+    setManualReviewConfirmed(false)
+  }
+
+  function proceedToPermissions() {
+    if (!canProceedRisk) return
+    const draft = prepareNdprDraftForValidation(
+      restoreNewPermitDraftFromSession(),
+      user,
+      userDirectory,
+    )
+    const ndprErr = validateNdprDraft(draft)
+    if (ndprErr) {
+      showError(ndprErr)
+      return
+    }
+    const asorErr = validateAsorForm(form)
+    if (asorErr) {
+      showError(asorErr)
+      return
+    }
+    const ppr = loadPprForm()
+    saveWorkPermissionsToSession(initializeWorkPermissionsBundle(draft, ppr))
+    setRiskGatePassed()
+    nav('/permissions')
+  }
+
+  async function submitNdprPackage() {
+    setSubmitError(null)
+    if (!isPprGatePassed()) {
+      setSubmitError('Сначала загрузите документ ППР.')
+      return
+    }
+    if (!isNdGatePassed()) {
+      setSubmitError('Сначала заполните раздел «НДПР».')
+      return
+    }
+    if (!manualReviewConfirmed) {
+      setSubmitError(
+        `Подтвердите ручную проверку ${ABR_LABEL} и оценки риска перед отправкой.`,
+      )
+      return
+    }
+    const asorErr = validateAsorForm(form)
+    if (asorErr) {
+      setSubmitError(asorErr)
+      return
+    }
+
+    const draft = restoreNewPermitDraftFromSession()
+    if (draft.executors.some((ex) => !ex.userUid.trim())) {
+      setSubmitError('В НДПР у каждого работника должен быть выбран пользователь.')
+      return
+    }
+
+    const ppr = loadPprForm()
+    const asorWithApprovers = finalizeAsorFormForReady(
+      seedApprovalNamesFromPermit(form, draft, resolveUser, resolveBadge),
+      ppr,
+    )
+    let packageDraft = applyAsorToPermitDraft(draft, asorWithApprovers)
+    const performerUid = resolvePerformerUidForPackage(
+      packageDraft.performerUid,
+      user,
+      userDirectory,
+    )
+    packageDraft = {
+      ...packageDraft,
+      title: draft.title.trim() || packageDraft.title,
+      workStages: draft.workStages,
+      workDescription:
+        draft.workStages.trim() ||
+        draft.workDescription.trim() ||
+        packageDraft.workDescription,
+      ppr,
+      asor: asorWithApprovers,
+      f04: draft.permitType === 'cold' ? undefined : draft.f04,
+      isContractorPermit: false,
+      performerUid,
+      registrationRefNo:
+        draft.registrationRefNo.trim() || packageDraft.registrationRefNo,
+    }
+
+    setBusy(true)
+    try {
+      const resumePermitId = readResumePermitId()
+      setSubmitStage('Сохранение наряда в базе…')
+      let p
+      if (resumePermitId) {
+        await updatePermit(resumePermitId, packageDraftToPermitFields(packageDraft))
+        p = { id: resumePermitId, ...packageDraft } as import('../types/domain').Permit
+      } else {
+        p = await createPermit(packageDraft)
+      }
+      setSubmitStage('Формирование PDF-пакета для согласования…')
+      const { buildSigningPackagePdf } = await import('../lib/buildSigningPackagePdf')
+      const packagePdf = await buildSigningPackagePdf(p, resolveUser, participantDirectory)
+      await updatePermit(p.id, { packagePdf })
+      setSubmitStage('Отправка на согласование…')
+      await transition(p.id, 'on_approval')
+      setSubmitStage('Назначение подписантов и уведомления…')
+      let provisionWarning: string | null = null
+      try {
+        const { provisionPermitSignersClient } = await import('../lib/provisionSigners')
+        const result = await provisionPermitSignersClient(p.id)
+        if (!result) {
+          provisionWarning =
+            'Наряд отправлен, но уведомления подписантам не созданы (Firebase Functions недоступны).'
+        }
+      } catch (e) {
+        provisionWarning =
+          e instanceof Error
+            ? `Наряд отправлен, но уведомления не созданы: ${e.message}`
+            : 'Наряд отправлен, но уведомления подписантам не созданы.'
+      }
+      clearPackageSession()
+      nav(`/p/${p.id}`, { state: { provisionWarning } })
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+      setSubmitStage(null)
+    }
+  }
+
+  if (!ndprAccessible) {
+    return (
+      <div className="page narrow">
+        <h1>{p.riskTitle}</h1>
+        <p className="muted">{p.riskGateNdpr}</p>
+        <div className="btn-row" style={{ marginTop: '0.75rem' }}>
+          <Link className="btn primary" to={isPprGatePassed() ? '/new' : '/ppr'}>
+            {isPprGatePassed() ? 'НДПР' : SOURCE_DOCUMENT_LABEL}
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   if (boot) {
     return (
@@ -260,704 +592,375 @@ export function RiskAssessmentPage() {
     )
   }
 
-  let prevGroup = ''
   return (
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Оценка риска (АСОР)</h1>
+          <h1>{p.riskTitle}</h1>
           <p className="muted small" style={{ marginTop: '-0.25rem' }}>
-            {ASOR_EDITION_META.title} · {ASOR_EDITION_META.formRef} · изд.{' '}
-            {ASOR_EDITION_META.edition}
+            {t.wizard.stepOf(3, wizardSteps)}
           </p>
-          <p className="muted xsmall">{ASOR_EDITION_META.subtitle}</p>
+        </div>
+        <div className="btn-row page-header__cta">
+          <Link className="btn ghost small" to="/ppr">
+            {SOURCE_DOCUMENT_LABEL}
+          </Link>
+          <Link className="btn ghost small" to="/new">
+            НДПР
+          </Link>
+          <button type="button" className="btn ghost small" onClick={resetDraft}>
+            Очистить анкету
+          </button>
         </div>
       </div>
 
-      <section className="card" style={{ marginBottom: '1rem' }}>
-        <div className="btn-row">
-          <button type="button" className="btn primary" onClick={gotoNewPermit}>
-            Далее: оформить наряд-допуск
+      <section className="card">
+        <h2 style={{ marginTop: 0 }}>{ABR_LABEL}</h2>
+        <p className="muted small" style={{ marginTop: 0 }}>
+          Заполните {ABR_LABEL} вручную или сформируйте автоматически по исходному документу.
+        </p>
+        <div className="journal-view-tabs" role="tablist" aria-label={ABR_LABEL}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={abrSectionMode === 'manual'}
+            className={`journal-view-tab${abrSectionMode === 'manual' ? ' journal-view-tab--active' : ''}`}
+            onClick={() => setAbrSectionMode('manual')}
+          >
+            {rp.tabManualFill}
           </button>
-          <button type="button" className="btn ghost" onClick={resetDraft}>
-            Очистить анкету
-          </button>
-          <Link className="btn ghost" to="/">
-            Журнал НД
-          </Link>
-        </div>
-        <p className="muted small" style={{ marginBottom: 0 }}>
-          После сохранения наряда блок АСОР прикладывается к записи автоматически; оба документа
-          отправляются в один поток утверждения.
-        </p>
-      </section>
-
-      <details open className="card">
-        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
-          1 раздел · заполняет рабочая команда АСОР (ПР, допускающий, выдающий НД)
-        </summary>
-        <div className="form" style={{ marginTop: '0.85rem', gap: '0.85rem', display: 'grid' }}>
-          <div className="row">
-            <label>
-              Дата создания
-              <input
-                type="date"
-                value={form.creationDateIso}
-                onChange={(e) => patch({ creationDateIso: e.target.value })}
-              />
-            </label>
-            <label>
-              Продолжительность работ
-              <input
-                value={form.workDurationText}
-                onChange={(e) => patch({ workDurationText: e.target.value })}
-                placeholder="например, 7 дней"
-              />
-            </label>
-            <label>
-              НД № (предв.)
-              <input
-                value={form.tentativeNdReference}
-                onChange={(e) => patch({ tentativeNdReference: e.target.value })}
-                placeholder="будет присвоен в реестре"
-              />
-            </label>
-          </div>
-          <label>
-            Кратко для поля НД (наименование)
-            <input
-              value={form.shortTitleForNarjad}
-              onChange={(e) => patch({ shortTitleForNarjad: e.target.value })}
-              placeholder="как уйдёт в карточку наряд-допуска"
-            />
-          </label>
-          <label>
-            Объём работ
-            <textarea
-              rows={4}
-              value={form.workScopeMarkdown}
-              onChange={(e) => patch({ workScopeMarkdown: e.target.value })}
-            />
-          </label>
-          <label>
-            Оборудование, на котором будут работы
-            <textarea
-              rows={3}
-              value={form.equipmentMarkdown}
-              onChange={(e) => patch({ equipmentMarkdown: e.target.value })}
-            />
-          </label>
-          <label>
-            Место проведения работ
-            <textarea
-              rows={2}
-              value={form.workPlacesText}
-              onChange={(e) => patch({ workPlacesText: e.target.value })}
-              placeholder="Можно перечислить скважины; при точном совпадении имени объекта он подставится в НД"
-            />
-          </label>
-          <label>
-            Подсказка по объекту в НД (из списка)
-            <select
-              value=""
-              onChange={(e) =>
-                patch({
-                  workPlacesText:
-                    `${form.workPlacesText}\n${e.target.value}`.trim(),
-                })
-              }
-            >
-              <option value="">+ Добавить строкой из каталога</option>
-              {PTW_SITE_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Комментарий по рабочей команде (кто участвовал в АСОР)
-            <textarea
-              rows={2}
-              value={form.teamParticipatingNote}
-              onChange={(e) => patch({ teamParticipatingNote: e.target.value })}
-            />
-          </label>
-        </div>
-      </details>
-
-      <details className="card" style={{ marginTop: '0.85rem' }}>
-        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
-          Специальные СИЗ и меры (отметить применимое)
-        </summary>
-        <p className="muted xsmall" style={{ marginTop: '0.75rem' }}>
-          Ниже — помимо базового набора противоогневых костюмов, шлемов, очков, перчаток, обуви и
-          т. д., указанном в инструкциях организации.
-        </p>
-        <div style={{ marginTop: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {PPE_TOGGLE_FIELDS.map((row) => {
-            const gh = row.group
-            const showGh = gh && gh !== prevGroup
-            if (showGh && gh) prevGroup = gh
-            return (
-              <div key={`${row.field}`}>
-                {showGh ? (
-                  <div className="strong small" style={{ marginTop: '0.65rem', marginBottom: '0.35rem' }}>
-                    {row.group}
-                  </div>
-                ) : null}
-                <label className="check" style={{ display: 'flex', gap: '0.5rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(form.ppe[row.field])}
-                    onChange={(e) =>
-                      patchPpe({ [row.field]: e.target.checked } as Partial<AsorPpeSelections>)
-                    }
-                  />
-                  {row.label}
-                </label>
-              </div>
-            )
-          })}
-        </div>
-        <div className="grid-2 form" style={{ marginTop: '1rem', gap: '0.65rem', display: 'grid' }}>
-          <label className="span-2">
-            Шлем прочее
-            <input
-              value={form.ppe.helmetOtherNote}
-              onChange={(e) => patchPpe({ helmetOtherNote: e.target.value })}
-            />
-          </label>
-          <label className="span-2">
-            Лимит времени воздействия (слух и др.)
-            <input
-              value={form.ppe.hearTimeLimitNote}
-              onChange={(e) => patchPpe({ hearTimeLimitNote: e.target.value })}
-            />
-          </label>
-          <label className="span-2">
-            Тип респиратора
-            <input
-              value={form.ppe.respiratorTypeText}
-              onChange={(e) => patchPpe({ respiratorTypeText: e.target.value })}
-            />
-          </label>
-          <label className="span-2">
-            Перчатки — прочее
-            <input
-              value={form.ppe.glovesOtherNote}
-              onChange={(e) => patchPpe({ glovesOtherNote: e.target.value })}
-            />
-          </label>
-          <label className="span-2">
-            Предупреждающие знаки — прочее
-            <input
-              value={form.ppe.signsOtherNote}
-              onChange={(e) => patchPpe({ signsOtherNote: e.target.value })}
-            />
-          </label>
-          <label className="span-2">
-            Ограждение — прочее
-            <input
-              value={form.ppe.fenceOtherNote}
-              onChange={(e) => patchPpe({ fenceOtherNote: e.target.value })}
-            />
-          </label>
-          <label className="span-2">
-            Рация / канал
-            <input
-              value={form.ppe.extraRadioChannelNote}
-              onChange={(e) => patchPpe({ extraRadioChannelNote: e.target.value })}
-            />
-          </label>
-          <label className="span-2">
-            Дополнительные требования — прочее
-            <textarea
-              rows={2}
-              value={form.ppe.extraRequirementsOtherNote}
-              onChange={(e) =>
-                patchPpe({ extraRequirementsOtherNote: e.target.value })
-              }
-            />
-          </label>
-        </div>
-      </details>
-
-      <details className="card" style={{ marginTop: '0.85rem' }}>
-        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
-          Инструменты, процедуры, разрешения
-        </summary>
-        <div className="form" style={{ marginTop: '0.85rem' }}>
-          <label>
-            Перечень инструментов / оборудования для работы
-            <textarea
-              rows={3}
-              value={form.toolsEquipmentList}
-              onChange={(e) => patch({ toolsEquipmentList: e.target.value })}
-            />
-          </label>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={form.staffReadProcedureListConfirmed}
-              onChange={(e) =>
-                patch({ staffReadProcedureListConfirmed: e.target.checked })
-              }
-            />
-            Персонал ознакомлен с перечисленными процедурами, необходимыми для данной работы
-          </label>
-          <fieldset className="fieldset">
-            <legend>Перечень процедур (статический)</legend>
-            <ul className="compact-list muted small">
-              {ASOR_PROCEDURE_REFS_DISPLAY.map((t) => (
-                <li key={t}>{t}</li>
-              ))}
-            </ul>
-          </fieldset>
-          <fieldset className="fieldset">
-            <legend>Разрешительные документы</legend>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              {PERMIT_LINES.map((row) => (
-                <label key={row.field} className="check">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(form.permitDocuments[row.field])}
-                    onChange={(e) =>
-                      patchDocs({ [row.field]: e.target.checked } as Partial<AsorPermitDocuments>)
-                    }
-                  />
-                  {row.label}
-                </label>
-              ))}
-            </div>
-            <label style={{ marginTop: '0.65rem', display: 'block' }}>
-              Другое
-              <input
-                value={form.permitDocuments.otherDocsLine}
-                onChange={(e) => patchDocs({ otherDocsLine: e.target.value })}
-              />
-            </label>
-          </fieldset>
-          <fieldset className="fieldset">
-            <legend>Планы аварийно-спасательных работ</legend>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={form.emergency.confinedSpaceARSPlan}
-                onChange={(e) =>
-                  patchEmergency({
-                    confinedSpaceARSPlan: e.target.checked,
-                  })
-                }
-              />
-              Замкнутые объёмы
-            </label>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={form.emergency.heightRescueInfoPack}
-                onChange={(e) =>
-                  patchEmergency({
-                    heightRescueInfoPack: e.target.checked,
-                  })
-                }
-              />
-              Работы на высоте — информационный пакет
-            </label>
-            <label>
-              Прочее
-              <input
-                value={form.emergency.otherEmergencyNote}
-                onChange={(e) =>
-                  patchEmergency({
-                    otherEmergencyNote: e.target.value,
-                  })
-                }
-              />
-            </label>
-          </fieldset>
-          <label>
-            Другие ресурсы
-            <textarea
-              rows={2}
-              value={form.supplementaryResourcesMarkdown}
-              onChange={(e) =>
-                patch({ supplementaryResourcesMarkdown: e.target.value })
-              }
-            />
-          </label>
-        </div>
-      </details>
-
-      <section className="card" style={{ marginTop: '0.85rem' }}>
-        <h2 style={{ marginTop: 0 }}>2 раздел · задания и опасные факторы</h2>
-        <p className="muted small">
-          На каждый блок «Задание №…» добавьте опасные факторы, опишите средства защиты и выберите
-          остаточный уровень риска.
-        </p>
-        <div className="btn-row" style={{ marginBottom: '0.85rem' }}>
-          <button type="button" className="btn ghost" onClick={addTask}>
-            + Добавить задание
+          <button
+            type="button"
+            role="tab"
+            aria-selected={abrSectionMode === 'generate'}
+            className={`journal-view-tab${abrSectionMode === 'generate' ? ' journal-view-tab--active' : ''}`}
+            onClick={() => setAbrSectionMode('generate')}
+          >
+            {rp.tabGenerate}
           </button>
         </div>
-        {form.tasks.map((task, ti) => (
-          <div key={task.id} className="card" style={{ marginBottom: '0.85rem', padding: '0.85rem' }}>
-            <label>
-              Задание №{ti + 1}
-              <input
-                value={task.taskTitle}
-                onChange={(e) => patchTask(task.id, { taskTitle: e.target.value })}
-                placeholder="краткий заголовок задания"
-              />
-            </label>
-            <div className="btn-row">
+        {abrSectionMode === 'generate' ? (
+          <>
+            <div className="btn-row risk-generate-actions" style={{ marginTop: '0.75rem' }}>
               <button
                 type="button"
-                className="btn ghost small"
-                onClick={() => addHazard(task.id)}
+                className="btn primary"
+                disabled={abrGenBusy || !isAbrAiAvailable()}
+                onClick={() => void generateAbrFromPprDoc()}
               >
-                + Опасный фактор
+                {abrGenBusy
+                  ? `${APP_NAME} составляет анализ…`
+                  : `Сформировать ${ABR_LABEL}`}
+              </button>
+              <button
+                type="button"
+                className="btn ghost"
+                disabled={abrPdfBusy || abrGenBusy || !form.abr?.stages.length}
+                onClick={() => void viewAbrPdfDoc()}
+              >
+                {abrPdfBusy && !abrGenBusy ? 'Открытие…' : 'Посмотреть'}
               </button>
             </div>
-            {task.hazards.map((haz, hi) => (
-              <div
-                key={haz.id}
-                style={{
-                  borderLeft: '3px solid var(--border-strong, #cfd6e6)',
-                  paddingLeft: '0.75rem',
-                  marginTop: '0.85rem',
-                }}
-              >
-                <div className="strong small">{`Фактор № ${hi + 1}`}</div>
-                <label>
-                  Описание
-                  <input
-                    value={haz.factorDescription}
-                    onChange={(e) =>
-                      patchHazard(task.id, haz.id, {
-                        factorDescription: e.target.value,
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  Средства защиты от фактора
-                  <textarea
-                    rows={3}
-                    value={haz.protectiveMeasures}
-                    onChange={(e) =>
-                      patchHazard(task.id, haz.id, {
-                        protectiveMeasures: e.target.value,
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  Остаточный риск
-                  <select
-                    value={haz.residualRisk}
-                    onChange={(e) =>
-                      patchHazard(task.id, haz.id, {
-                        residualRisk: e.target.value as AsorHazardRow['residualRisk'],
-                      })
-                    }
-                  >
-                    <option value="">—</option>
-                    <option value="low">{ASOR_TASK_RESIDUAL_LABELS.low}</option>
-                    <option value="medium">{ASOR_TASK_RESIDUAL_LABELS.medium}</option>
-                    <option value="high">{ASOR_TASK_RESIDUAL_LABELS.high}</option>
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  className="btn ghost small"
-                  onClick={() => removeHazard(task.id, haz.id)}
-                >
-                  Удалить фактор
-                </button>
-              </div>
-            ))}
-          </div>
-        ))}
-      </section>
-
-      <section className="card" style={{ marginTop: '0.85rem' }}>
-        <h2 style={{ marginTop: 0 }}>Матрица вероятность × последствие</h2>
-        <p className="muted small">
-          Заполните параметры матрицы (стр. 5 АСОР). Уровень риска рассчитывается автоматически —
-          см. текстовые подсказки на таблице.
-        </p>
-        <div className="row" style={{ marginTop: '0.75rem' }}>
-          <label>
-            Вероятность
-            <select
-              value={form.matrixLikelihood}
-              onChange={(e) =>
-                patch({
-                  matrixLikelihood: e.target.value as AsorForm['matrixLikelihood'],
-                })
-              }
-            >
-              <option value="">—</option>
-              <option value="likely">{MATRIX_LIKELIHOOD_LABELS.likely}</option>
-              <option value="rare">{MATRIX_LIKELIHOOD_LABELS.rare}</option>
-            </select>
-          </label>
-          <label>
-            Степень последствий
-            <select
-              value={form.matrixSeverity}
-              onChange={(e) =>
-                patch({
-                  matrixSeverity: e.target.value as AsorForm['matrixSeverity'],
-                })
-              }
-            >
-              <option value="">—</option>
-              <option value="insignificant">
-                {MATRIX_SEVERITY_LABELS.insignificant}
-              </option>
-              <option value="moderateHarm">{MATRIX_SEVERITY_LABELS.moderateHarm}</option>
-              <option value="significantHarm">
-                {MATRIX_SEVERITY_LABELS.significantHarm}
-              </option>
-            </select>
-          </label>
-          <label>
-            Авторасчёт
-            <input
-              readOnly
-              value={
-                matrixRisk ? MATRIX_CELL_RISK_LABELS[matrixRisk] : '— заполните оба параметра —'
-              }
-            />
-          </label>
-        </div>
-      </section>
-
-      <section className="card" style={{ marginTop: '0.85rem' }}>
-        <h2 style={{ marginTop: 0 }}>Утверждение (роли)</h2>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Роль</th>
-                <th>ФИО</th>
-                <th>Пропуск</th>
-                <th>Дата</th>
-                <th>Согласие</th>
-              </tr>
-            </thead>
-            <tbody>
-              {form.approvals.map((row) => (
-                <tr key={row.roleKey}>
-                  <td>{row.roleLabelRu}</td>
-                  <td>
-                    <input
-                      value={row.fullNamePrinted}
-                      onChange={(e) =>
-                        patchApproval(row.roleKey, {
-                          fullNamePrinted: e.target.value,
-                        })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={row.badgeNo}
-                      onChange={(e) =>
-                        patchApproval(row.roleKey, { badgeNo: e.target.value })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="date"
-                      value={row.dateIso}
-                      onChange={(e) =>
-                        patchApproval(row.roleKey, {
-                          dateIso: e.target.value,
-                        })
-                      }
-                    />
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={row.acknowledged}
-                      onChange={(e) =>
-                        patchApproval(row.roleKey, {
-                          acknowledged: e.target.checked,
-                        })
-                      }
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="card" style={{ marginTop: '0.85rem' }}>
-        <h2 style={{ marginTop: 0 }}>Рабочая команда — декларация</h2>
-        <blockquote className="muted small">
-          «Я принял участие в АСОР, проведённом для данной работы, согласен и подтверждаю, что меры
-          контроля опасных факторов достаточны.»
-        </blockquote>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={form.declarationParagraphAccepted}
-            onChange={(e) =>
-              patch({ declarationParagraphAccepted: e.target.checked })
-            }
+            {abrGenBusy && (
+              <LoadingProgress
+                label={`${APP_NAME} составляет анализ безопасности работ…`}
+                indeterminate
+                withTips
+                fullscreen
+              />
+            )}
+            {abrPdfBusy && !abrGenBusy && (
+              <LoadingProgress
+                label="Формирование PDF…"
+                indeterminate
+                withTips
+                fullscreen
+              />
+            )}
+          </>
+        ) : (
+          <AbrManualReview
+            abr={form.abr ?? emptyAbrForm()}
+            onChange={updateAbr}
+            open={abrReviewOpen}
+            onOpenChange={setAbrReviewOpen}
+            embedded
           />
-          Команда подтвердила указанную формулировку о достаточности мер
-        </label>
-        <div className="btn-row" style={{ marginTop: '0.75rem' }}>
-          <button type="button" className="btn ghost small" onClick={addTeamParticipant}>
-            + Участник команды
+        )}
+        {abrGenError && (
+          <div className="alert error" role="alert" style={{ marginTop: '0.75rem' }}>
+            {abrGenError}
+          </div>
+        )}
+        {abrGenNote ? (
+          <div className="alert" role="status" style={{ marginTop: '0.75rem' }}>
+            {abrGenNote}
+          </div>
+        ) : abrReady ? (
+          <div className="alert" role="status" style={{ marginTop: '0.75rem' }}>
+            {ABR_LABEL} сформирован · {form.abr!.stages.length} этап(ов) · объект:{' '}
+            {form.abr!.workLocation || '—'}
+          </div>
+        ) : null}
+        {!abrGenNote && !abrReady && form.abr && form.abr.stages.length > 0 ? (
+          <p className="muted xsmall" style={{ marginBottom: 0, marginTop: '0.65rem' }}>
+            В документе: {form.abr.stages.length} этап(ов) · объект:{' '}
+            {form.abr.workLocation || '—'}
+          </p>
+        ) : null}
+      </section>
+
+      <section className="card" style={{ marginTop: '0.85rem' }}>
+        <h2 style={{ marginTop: 0 }}>Оценка риска</h2>
+        <p className="muted small" style={{ marginTop: 0 }}>
+          Заполните оценку риска вручную или сформируйте автоматически по исходному документу.
+        </p>
+        <div className="journal-view-tabs" role="tablist" aria-label="Оценка риска">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={riskSectionMode === 'manual'}
+            className={`journal-view-tab${riskSectionMode === 'manual' ? ' journal-view-tab--active' : ''}`}
+            onClick={() => setRiskSectionMode('manual')}
+          >
+            {rp.tabManualFill}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={riskSectionMode === 'generate'}
+            className={`journal-view-tab${riskSectionMode === 'generate' ? ' journal-view-tab--active' : ''}`}
+            onClick={() => setRiskSectionMode('generate')}
+          >
+            {rp.tabGenerate}
           </button>
         </div>
-        <div style={{ overflowX: 'auto', marginTop: '0.75rem' }}>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Роль</th>
-                <th>ФИО</th>
-                <th>Пропуск</th>
-                <th>Дата</th>
-                <th>Подтверждение</th>
-              </tr>
-            </thead>
-            <tbody>
-              {form.declarationTeamRows.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="muted center">
-                    Пока нет строк · добавляйте по мере необходимости
-                  </td>
-                </tr>
-              )}
-              {form.declarationTeamRows.map((row, idx) => (
-                <tr key={row.id}>
-                  <td>
-                    <input
-                      value={row.rolePrinted}
-                      onChange={(e) =>
-                        patchTeam(idx, { rolePrinted: e.target.value })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={row.fullNamePrinted}
-                      onChange={(e) =>
-                        patchTeam(idx, { fullNamePrinted: e.target.value })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={row.badgeNo}
-                      onChange={(e) => patchTeam(idx, { badgeNo: e.target.value })}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="date"
-                      value={row.dateIso}
-                      onChange={(e) => patchTeam(idx, { dateIso: e.target.value })}
-                    />
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={row.signatureAcknowledged}
-                      onChange={(e) =>
-                        patchTeam(idx, {
-                          signatureAcknowledged: e.target.checked,
-                        })
-                      }
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="card" style={{ marginTop: '0.85rem' }}>
-        <h2 style={{ marginTop: 0 }}>Пересменка ответственных лиц АСОР</h2>
-        <p className="muted small">15 строк, как на бланке.</p>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Роль</th>
-                <th>ФИО</th>
-                <th>Пропуск</th>
-                <th>Дата</th>
-                <th>Отметка</th>
-              </tr>
-            </thead>
-            <tbody>
-              {form.shiftTakeoverMembers.slice(0, 15).map((row, idx) => (
-                <tr key={row.id}>
-                  <td>
-                    <input
-                      value={row.rolePrinted}
-                      onChange={(e) =>
-                        patchShift(idx, { rolePrinted: e.target.value })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={row.fullNamePrinted}
-                      onChange={(e) =>
-                        patchShift(idx, { fullNamePrinted: e.target.value })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={row.badgeNo}
-                      onChange={(e) =>
-                        patchShift(idx, { badgeNo: e.target.value })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="date"
-                      value={row.dateIso}
-                      onChange={(e) => patchShift(idx, { dateIso: e.target.value })}
-                    />
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={row.signatureAcknowledged}
-                      onChange={(e) =>
-                        patchShift(idx, {
-                          signatureAcknowledged: e.target.checked,
-                        })
-                      }
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {riskSectionMode === 'generate' ? (
+          <>
+            <div className="btn-row risk-generate-actions" style={{ marginTop: '0.75rem' }}>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={neboshGenBusy || !isNeboshAiAvailable()}
+                onClick={() => void generateNeboshFromPpr()}
+              >
+                {neboshGenBusy ? `${APP_NAME} формирует…` : 'Сформировать оценку риска'}
+              </button>
+              <button
+                type="button"
+                className="btn ghost"
+                disabled={neboshPdfBusy || neboshGenBusy || !neboshReady}
+                onClick={() => void viewNeboshPdf()}
+              >
+                {neboshPdfBusy && !neboshGenBusy ? 'Открытие…' : 'Посмотреть'}
+              </button>
+            </div>
+            {neboshGenBusy && (
+              <LoadingProgress
+                label={`${APP_NAME} формирует оценку риска…`}
+                indeterminate
+                withTips
+                fullscreen
+              />
+            )}
+            {neboshPdfBusy && !neboshGenBusy && (
+              <LoadingProgress
+                label="Формирование PDF…"
+                indeterminate
+                withTips
+                fullscreen
+              />
+            )}
+          </>
+        ) : (
+          <NeboshManualReview
+            form={form}
+            onChange={updateFormReview}
+            open={neboshReviewOpen}
+            onOpenChange={setNeboshReviewOpen}
+            embedded
+          />
+        )}
+        {neboshGenError && (
+          <div className="alert error" role="alert" style={{ marginTop: '0.75rem' }}>
+            {neboshGenError}
+          </div>
+        )}
+        {neboshGenNote ? (
+          <div className="alert" role="status" style={{ marginTop: '0.75rem' }}>
+            {neboshGenNote}
+          </div>
+        ) : neboshReady ? (
+          <div className="alert" role="status" style={{ marginTop: '0.75rem' }}>
+            Оценка риска сформирована · {form.tasks.length} заданий, {neboshHazardCount}{' '}
+            опасностей
+          </div>
+        ) : null}
+        {!neboshGenNote && !neboshReady && form.tasks.length > 0 && (
+          <p className="muted xsmall" style={{ marginBottom: 0, marginTop: '0.65rem' }}>
+            В документе: {form.tasks.length} заданий,{' '}
+            {form.tasks.reduce((n, t) => n + t.hazards.length, 0)} опасностей.
+          </p>
+        )}
       </section>
 
       <section className="card" style={{ marginTop: '0.85rem', marginBottom: '3rem' }}>
-        <button type="button" className="btn primary" onClick={gotoNewPermit}>
-          Завершить АСОР и перейти к оформлению НД
-        </button>
+        <h2 style={{ marginTop: 0 }}>Проверка перед отправкой</h2>
+        <p className="muted small" style={{ marginTop: 0 }}>
+          Заполните документы вручную или сформируйте автоматически, откройте каждый для проверки и
+          сверьте с полями ниже.
+        </p>
+        <ul className="compact-list small" style={{ margin: '0.75rem 0' }}>
+          <li>
+            {SOURCE_DOCUMENT_LABEL}:{' '}
+            {pprAttachment?.dataBase64 ? (
+              <span className="strong">{pprAttachment.fileName}</span>
+            ) : (
+              <span className="muted">файл не загружен</span>
+            )}
+          </li>
+          <li>
+            {ABR_LABEL}:{' '}
+            {abrReady ? (
+              <span className="strong">готов · {form.abr!.stages.length} этап(ов)</span>
+            ) : (
+              <span className="muted">не сформирован</span>
+            )}
+          </li>
+          <li>
+            Оценка риска:{' '}
+            {neboshReady ? (
+              <span className="strong">
+                готова · {form.tasks.length} заданий, {neboshHazardCount} опасностей
+              </span>
+            ) : (
+              <span className="muted">не сформирована</span>
+            )}
+          </li>
+        </ul>
+        <div className="btn-row" style={{ marginBottom: '0.75rem' }}>
+          {pprAttachment?.dataBase64 ? (
+            <button
+              type="button"
+              className="btn ghost small"
+              onClick={() => openPprAttachmentInBrowser(pprAttachment)}
+            >
+              Посмотреть {SOURCE_DOCUMENT_LABEL.toLowerCase()}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="btn ghost small"
+            disabled={!abrReady || abrPdfBusy}
+            onClick={() => void viewAbrPdfDoc()}
+          >
+            {abrPdfBusy ? 'Открытие…' : `Посмотреть ${ABR_LABEL}`}
+          </button>
+          <button
+            type="button"
+            className="btn ghost small"
+            disabled={!neboshReady || neboshPdfBusy}
+            onClick={() => void viewNeboshPdf()}
+          >
+            {neboshPdfBusy ? 'Открытие…' : 'Посмотреть оценку риска'}
+          </button>
+        </div>
+        <label className="check check--review" htmlFor="manual-review-confirmed">
+          <input
+            id="manual-review-confirmed"
+            type="checkbox"
+            checked={manualReviewConfirmed}
+            onChange={(e) => setManualReviewConfirmed(e.target.checked)}
+          />
+          <span>
+            Я проверил {ABR_LABEL} и оценку риска вручную, просмотрел документы и сверил данные
+          </span>
+        </label>
+        <section className="submit-requirements" aria-label="Условия отправки на согласование">
+          <h3 className="submit-requirements__title">Условия отправки</h3>
+          <ul className="submit-requirements__list">
+            {submitRequirements.map((req) => (
+              <li
+                key={req.id}
+                className={
+                  req.ok
+                    ? 'submit-requirements__item submit-requirements__item--ok'
+                    : 'submit-requirements__item submit-requirements__item--pending'
+                }
+              >
+                <span className="submit-requirements__mark" aria-hidden>
+                  {req.ok ? '✓' : '○'}
+                </span>
+                <span>
+                  {req.label}
+                  {!req.ok && req.hint ? (
+                    <span className="submit-requirements__hint"> — {req.hint}</span>
+                  ) : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <div className="btn-row" style={{ marginTop: '0.85rem' }}>
+          {permissionsRequired ? (
+            <button
+              type="button"
+              className="btn primary"
+              disabled={!canProceedRisk}
+              onClick={() => proceedToPermissions()}
+            >
+              Далее — Разрешения
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn primary"
+              disabled={!canSubmit}
+              onClick={() => void submitNdprPackage()}
+            >
+              {busy ? submitStage ?? 'Отправка…' : 'Отправить на согласование'}
+            </button>
+          )}
+        </div>
+        {busy && (
+          <LoadingProgress
+            label={submitStage ?? `${APP_NAME} отправляет пакет…`}
+            indeterminate
+            withTips
+            fullscreen
+          />
+        )}
+        {(!abrReady || !neboshReady) && (
+          <p className="muted xsmall" style={{ marginTop: '0.65rem', marginBottom: 0 }}>
+            Заполните {ABR_LABEL} и оценку риска вручную или сформируйте автоматически, затем
+            отметьте подтверждение проверки.
+          </p>
+        )}
+        {!canSubmit && !busy && submitRequirements.some((r) => !r.ok) && (
+          <p className="muted xsmall" style={{ marginTop: '0.65rem', marginBottom: 0 }}>
+            Выполните все пункты в списке «Условия отправки» — кнопка станет активной.
+          </p>
+        )}
+        {!manualReviewConfirmed && abrReady && neboshReady && maySubmitPackage && (
+          <p className="muted xsmall" style={{ marginTop: '0.65rem', marginBottom: 0 }}>
+            Отметьте подтверждение проверки, чтобы отправить пакет.
+          </p>
+        )}
+        {!maySubmitPackage && (
+          <p className="muted xsmall" style={{ marginTop: '0.65rem', marginBottom: 0 }}>
+            {submitPermitPackageDeniedReason(user)}
+          </p>
+        )}
+        {busy && submitStage && (
+          <p className="muted small" style={{ marginTop: '0.65rem', marginBottom: 0 }}>
+            Документ формируется при скачивании на карточке наряда — это ускоряет отправку.
+          </p>
+        )}
+        {submitError && (
+          <div className="alert error" role="alert" style={{ marginTop: '0.75rem' }}>
+            {submitError}
+          </div>
+        )}
       </section>
     </div>
   )

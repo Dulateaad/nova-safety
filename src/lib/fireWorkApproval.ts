@@ -4,7 +4,7 @@ import {
   type PermitDraft,
 } from '../types/domain'
 
-/** Замкнутые / газоопасные / огневые — ERT (ПАС) в очереди согласования и газотест. */
+/** Огневые работы — ERT (ПАС) в очереди согласования и газотест. */
 export function permitRequiresErtApproval(
   permit: Pick<
     Permit | PermitDraft,

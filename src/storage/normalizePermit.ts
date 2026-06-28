@@ -2,6 +2,7 @@ import type { Permit, PermitCategory, PermitType } from '../types/domain'
 import { coercePtwSite } from '../config/ptwSites'
 import { emptyF02 } from '../uog/permitDefaults'
 import { initialNdprResponses } from '../uog/ndprChecklistTemplate'
+import { normalizeAbrDailyAcks } from '../lib/abrDailyAck'
 
 function normalizeStoredPermitType(raw: unknown): PermitType {
   if (raw === 'fire' || raw === 'cold') return raw
@@ -48,6 +49,7 @@ export function migratePermit(p: Permit): Permit {
       ertSigned: sig?.ertSigned,
     },
     incidentLongRetention: p.incidentLongRetention ?? false,
+    abrDailyAcks: normalizeAbrDailyAcks(incoming.abrDailyAcks),
   }
 
   if (permitType === 'cold') next.f04 = undefined

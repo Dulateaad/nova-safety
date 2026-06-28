@@ -2,7 +2,12 @@ import type { GeminiPdfDocument, PprControlMeasuresItem } from '../types/ppr'
 
 export interface ControlMeasuresAiPayload {
   workTitle?: string
+  workTasks?: unknown[]
   items?: unknown[]
+  controlMeasures?: unknown
+  control_measures?: unknown
+  hazards?: unknown
+  safetyMeasures?: unknown
   pdfDocument?: {
     blocks?: {
       type?: string
@@ -115,13 +120,110 @@ export function normalizePdfDocumentFromPayload(
   return normalizePdfDocumentRaw(payload.pdfDocument)
 }
 
+function itemsFromWorkTasks(payload: ControlMeasuresAiPayload): PprControlMeasuresItem[] {
+  const tasks = payload.workTasks
+  if (!Array.isArray(tasks)) return []
+  const out: PprControlMeasuresItem[] = []
+  for (const row of tasks) {
+    if (!row || typeof row !== 'object') continue
+    const r = row as Record<string, unknown>
+    const measures = measuresFromUnknown(
+      r.safetyMeasures ??
+        r.controlMeasures ??
+        r.measures ??
+        r.меры ??
+        r['меры контроля'],
+    )
+    if (measures.length === 0) continue
+    out.push({
+      section: String(r.taskTitle ?? r.stage ?? r.title ?? 'Этап работ').trim(),
+      hazard: String(r.hazard ?? r.taskTitle ?? r.stage ?? 'Риски этапа').trim(),
+      controlMeasures: measures,
+    })
+  }
+  return out
+}
+
+function itemsFromAlternateRootArrays(
+  payload: ControlMeasuresAiPayload,
+): PprControlMeasuresItem[] {
+  const keys = [
+    'controlMeasures',
+    'control_measures',
+    'hazards',
+    'safetyMeasures',
+    'safety_measures',
+    'меры',
+  ] as const
+  for (const key of keys) {
+    const raw = (payload as Record<string, unknown>)[key]
+    if (!Array.isArray(raw)) continue
+    const mapped = raw
+      .map((row): PprControlMeasuresItem | null => {
+        if (typeof row === 'string') {
+          const measures = splitMeasureLines(row)
+          if (measures.length === 0) return null
+          return {
+            section: 'Техника безопасности',
+            hazard: 'По ППР',
+            controlMeasures: measures,
+          }
+        }
+        if (!row || typeof row !== 'object') return null
+        const r = row as Record<string, unknown>
+        const controlMeasures = measuresFromRow(row)
+        if (controlMeasures.length === 0) return null
+        return {
+          section: String(r.section ?? r.раздел ?? 'Техника безопасности').trim(),
+          hazard: String(
+            r.hazard ?? r.опасность ?? r.title ?? r.name ?? 'Опасный фактор',
+          ).trim(),
+          controlMeasures,
+        }
+      })
+      .filter((row): row is PprControlMeasuresItem => row !== null)
+    if (mapped.length > 0) return mapped
+  }
+  return []
+}
+
+/** Минимальный блок, чтобы пройти валидацию и продолжить оформление НДПР. */
+export function minimalControlMeasuresFallback(
+  workTitle?: string,
+): PprControlMeasuresItem[] {
+  const title = workTitle?.trim() || 'работы по ППР'
+  return [
+    {
+      section: 'Техника безопасности',
+      hazard: 'Общие требования',
+      controlMeasures: [
+        `Соблюдать требования ППР по объекту: ${title}`,
+        'Применять СИЗ и инструктаж по виду работ',
+        'Контролировать опасную зону и SimOps с соседними работами',
+      ],
+    },
+  ]
+}
+
 export function normalizeControlMeasuresItems(
   payload: ControlMeasuresAiPayload,
+  opts?: { allowMinimalFallback?: boolean; workTitle?: string },
 ): PprControlMeasuresItem[] {
   const rows = Array.isArray(payload.items) ? payload.items : []
   const fromItems = rows
     .map((row) => {
-      if (!row || typeof row !== 'object') return null
+      if (!row || typeof row !== 'object') {
+        if (typeof row === 'string') {
+          const measures = splitMeasureLines(row)
+          if (measures.length === 0) return null
+          return {
+            section: 'Техника безопасности',
+            hazard: 'По ППР',
+            controlMeasures: measures,
+          }
+        }
+        return null
+      }
       const r = row as Record<string, unknown>
       const controlMeasures = measuresFromRow(row)
       if (controlMeasures.length === 0) return null
@@ -134,7 +236,22 @@ export function normalizeControlMeasuresItems(
     .filter((row): row is PprControlMeasuresItem => row !== null)
 
   if (fromItems.length > 0) return fromItems
-  return itemsFromPdfDocumentFallback(payload)
+
+  const fromTasks = itemsFromWorkTasks(payload)
+  if (fromTasks.length > 0) return fromTasks
+
+  const fromRoot = itemsFromAlternateRootArrays(payload)
+  if (fromRoot.length > 0) return fromRoot
+
+  const fromPdf = itemsFromPdfDocumentFallback(payload)
+  if (fromPdf.length > 0) return fromPdf
+
+  if (opts?.allowMinimalFallback) {
+    return minimalControlMeasuresFallback(
+      opts.workTitle ?? String(payload.workTitle ?? ''),
+    )
+  }
+  return []
 }
 
 export function controlMeasuresMethodLabel(

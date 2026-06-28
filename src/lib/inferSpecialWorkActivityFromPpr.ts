@@ -35,15 +35,16 @@ const ACTIVITY_RULES: ActivityRule[] = [
   {
     activity: 'gas_hazard',
     patterns: [
-      /газоопас/i,
       /взрывоопас/i,
       /h₂s|h2s/i,
       /сероводород/i,
-      /газоанализ/i,
       /в\s+газоопасн/i,
       /азотн(?:ая|ое|ого)\s+(?:установк|оборудован)/i,
       /продувк(?:а|и)\s+(?:трубопровод|шлейф|линии)/i,
       /спуск\s+давлен/i,
+      /газоопасн(?:ые|ых)?\s+работ/i,
+      /работ[^\n]{0,24}газоопас/i,
+      /газоопасн(?:ая|ое|ый)\s+(?:зона|участ|площад)/i,
     ],
   },
   {
@@ -90,7 +91,6 @@ const ACTIVITY_RULES: ActivityRule[] = [
       /под(?:ъ|ь)?(?:ё|е)мн(?:ый|ая|ое|ые)?\s+(?:кран|механизм|агрегат)/i,
       /манипулятор/i,
       /леб(?:ё|е)дк(?:а|и|у|ой)/i,
-      /\bкран\b/i,
     ],
   },
   {
@@ -122,7 +122,9 @@ export function buildPprWorkTypesHaystack(ppr: PprForm, docText?: string): strin
       .filter((item) => /^3\.|операци|этап|технолог/i.test(item.section))
       .flatMap((item) => [item.section, item.hazard]),
   ]
-  if (docText?.trim()) parts.push(docText.slice(0, 12000))
+  if (docText?.trim()) {
+    parts.push(filterOperationalWorkText(docText.slice(0, 12000)))
+  }
   return parts.filter(Boolean).join('\n')
 }
 
@@ -159,9 +161,6 @@ const PERMISSION_ACTIVITY_RULES: ActivityRule[] = [
       /наряд[^\n]{0,30}газоопас/i,
       /нд(?:пр)?[^\n]{0,24}[-\s]*го\b/i,
       /\bго\b[^\n]{0,30}разреш/i,
-      /газоопас/i,
-      /взрывоопас/i,
-      /газоанализ/i,
     ],
   },
   {
@@ -226,7 +225,7 @@ export function mergeSpecialWorkActivities(
 export function inferSpecialWorkActivitiesFromText(
   haystack: string,
 ): SpecialWorkActivity[] {
-  const text = haystack.trim()
+  const text = filterOperationalWorkText(haystack.trim())
   if (!text) return []
 
   const found: SpecialWorkActivity[] = []
@@ -242,6 +241,31 @@ export function inferSpecialWorkActivitiesFromText(
     return []
   }
   return merged
+}
+
+/** Убирает строки общих мер ТБ — они часто дают ложные «на высоте», «газоопасные» и т.п. */
+export function filterOperationalWorkText(haystack: string): string {
+  return haystack
+    .split('\n')
+    .filter((line) => {
+      const t = line.trim()
+      if (!t) return false
+      if (/^3\.\d+/.test(t)) return true
+      if (/^(?:этап|операци|описание|инструмент|оборудован|объ[её]м|работ)/i.test(t)) {
+        return true
+      }
+      if (
+        /^(?:\d+[.)]\s*)?(?:меры|требован|запрещ|необходим|обязан|использовать|применять|до\s+начала|после\s+окончан)/i.test(
+          t,
+        )
+      ) {
+        return false
+      }
+      if (/техник(?:а|и)\s+безопасност/i.test(t) && !/^3\./.test(t)) return false
+      if (/опасн(?:ые|ых)\s+зон/i.test(t) && !/^3\./.test(t)) return false
+      return true
+    })
+    .join('\n')
 }
 
 /** Определяет основной особый вид работ по содержанию ППР. */

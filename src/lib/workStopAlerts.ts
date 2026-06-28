@@ -64,6 +64,12 @@ export function resolveLocalWorkStopAlerts(permitId: string): void {
   )
 }
 
+export function removeLocalWorkStopAlertsForPermits(permitIds: readonly string[]): void {
+  const ids = new Set(permitIds.map((id) => id.trim()).filter(Boolean))
+  if (ids.size === 0) return
+  saveLocalAlerts(loadLocalAlerts().filter((a) => !ids.has(a.permitId)))
+}
+
 export async function fetchWorkStopAlerts(
   db: Firestore | null,
   assigneeUid: string,

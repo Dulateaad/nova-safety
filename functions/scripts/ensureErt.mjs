@@ -14,7 +14,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const ERT = {
   email: 'ert@nova.local',
   password: 'Ert235',
-  displayName: 'ПАС Ардак Сабитов',
+  displayName: 'ERT Nash',
   role: 'ert',
   badgeNo: '022',
 }
@@ -63,7 +63,7 @@ async function main() {
   await db.collection('users').doc(userRecord.uid).set(ERT, { merge: true })
 
   console.log('')
-  console.log('Emergency Response Team — ПАС Ардак Сабитов')
+  console.log('Emergency Response Team — ERT Nash')
   console.log('  Email:  ', ERT.email)
   console.log('  Пароль: ', ERT.password)
   console.log('  Роль:   ', 'Emergency Response Team (ert)')

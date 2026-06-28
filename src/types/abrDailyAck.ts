@@ -6,6 +6,11 @@ export interface AbrDailyAckEntry {
   signedAtIso: string
   /** Отметка подписи в отчёте (ЭЦП / ознакомление). */
   signatureNote: string
+  /** ЭЦП eGov Mobile (CMS), если подписано через приложение. */
+  cmsBase64?: string
+  signerIin?: string | null
+  documentHash?: string
+  provider?: 'egov_mobile' | 'manual'
 }
 
 export interface AbrDailyAckDay {

@@ -1,12 +1,8 @@
 import type { DocumentData } from 'firebase-admin/firestore'
 
-const ERT_APPROVAL_ACTIVITIES = new Set([
-  'open_flame_fire',
-  'gas_hazard',
-  'confined_space',
-])
+const ERT_APPROVAL_ACTIVITIES = new Set(['open_flame_fire'])
 
-/** Замкнутые / газоопасные / огневые — ERT (ПАС) в очереди согласования и газотест. */
+/** Огневые работы — ERT (ПАС) в очереди согласования и газотест. */
 export function permitRequiresErtApproval(permit: DocumentData): boolean {
   if (String(permit.permitType ?? '') === 'fire') return true
   const single = String(permit.specialWorkActivity ?? '')

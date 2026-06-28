@@ -33,7 +33,7 @@ export async function generateWorkPermissionSectionsFromPpr(
   ctx?: PprRiskAssessmentContext,
 ): Promise<WorkPermissionDocument> {
   if (!isAiClientReady()) {
-    throw new Error('Для ИИ-заполнения нужен ключ Claude или Gemini в .env')
+    throw new Error('Для ИИ-заполнения нужен ключ Claude (VITE_ANTHROPIC_API_KEY) в .env')
   }
   const context = ctx ?? (await buildPprRiskAssessmentContext(ppr))
   const raw = await aiGenerateTextForExtraction({

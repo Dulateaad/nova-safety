@@ -29,11 +29,11 @@ export const ADDITIONAL_NDPR_PERFORMERS: DefaultSignerSpec[] = [
 export const DEFAULT_NDPR_SIGNERS: DefaultSignerSpec[] = [
   {
     slot: 'performer',
-    displayName: 'Абылай Акмалиев',
+    displayName: 'Абылай Аманжол',
     emails: ['abylay2@nova.local', 'abylay@nova.local'],
-    demoIds: ['u-performer-7'],
+    demoIds: ['u-performer-abylay', 'u-performer-6'],
     roles: ['performer'],
-    namePatterns: [/акмалиев/i, /абылай/i],
+    namePatterns: [/аманжол/i, /абылай/i],
   },
   {
     slot: 'permitter',
@@ -45,11 +45,11 @@ export const DEFAULT_NDPR_SIGNERS: DefaultSignerSpec[] = [
   },
   {
     slot: 'issuer',
-    displayName: 'Темирлан Уахитов',
+    displayName: 'Темирлан Усеинов',
     emails: ['temirlan@nova.local'],
-    demoIds: ['u-performer-5'],
+    demoIds: ['u-issuer-temirlan'],
     roles: ['issuer'],
-    namePatterns: [/темирлан/i, /уахитов/i],
+    namePatterns: [/темирлан/i, /усеинов/i, /уахитов/i],
   },
   {
     slot: 'leadExpert',
@@ -187,11 +187,29 @@ export function enrichUserDirectoryWithDefaultSigners(
   return patched
 }
 
+export function resolveDefaultErtUid(directory: DemoUser[]): string {
+  const enriched = enrichUserDirectoryWithDefaultSigners(directory)
+  const ert = enriched.find((u) => u.role === 'ert')
+  return ert?.id ?? 'u-ert'
+}
+
+export function resolveErtSignerUid(
+  directory: DemoUser[],
+  draftUid?: string,
+): string {
+  const fallback = resolveDefaultErtUid(directory)
+  const uid = draftUid?.trim() ?? ''
+  if (!uid) return fallback
+  const user = directory.find((u) => u.id === uid)
+  if (!user || user.role !== 'ert') return fallback
+  return uid
+}
+
 export function resolveDefaultNdprParticipantUids(
   directory: DemoUser[],
 ): Pick<
   PermitDraft,
-  'performerUid' | 'permitterUid' | 'issuerUid' | 'leadExpertUid'
+  'performerUid' | 'permitterUid' | 'issuerUid' | 'leadExpertUid' | 'ertUid'
 > {
   const enriched = enrichUserDirectoryWithDefaultSigners(directory)
   const pick = (slot: NdprParticipantSlot) => {
@@ -205,5 +223,6 @@ export function resolveDefaultNdprParticipantUids(
     permitterUid: pick('permitter'),
     issuerUid: pick('issuer'),
     leadExpertUid: pick('leadExpert'),
+    ertUid: resolveDefaultErtUid(enriched),
   }
 }

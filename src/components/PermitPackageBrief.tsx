@@ -10,6 +10,7 @@ export type PackagePermissionBrief = {
   label: string
   hasPdf: boolean
   requiresGasTests: boolean
+  gasTestsFilled?: boolean
 }
 
 function WorkStagesContent({ text, emptyLabel }: { text: string; emptyLabel: string }) {
@@ -166,23 +167,37 @@ export function PermitPackageBriefCard(props: Props) {
               {viewingPermission === perm.kind ? c.opening : perm.label}
             </button>
           ))}
-          {showGasTestTasks
-            ? permissions
-                .filter((p) => p.requiresGasTests)
-                .map((perm) => (
-                  <button
-                    key={`gas-${perm.kind}`}
-                    type="button"
-                    className={`package-brief__doc-link package-brief__doc-link--gas ${
-                      activeGasKind === perm.kind ? 'is-active' : ''
-                    }`}
-                    onClick={() => onGasTestTask?.(perm.kind)}
-                    title={fillTemplate(dk.fillGasTest, { label: perm.label })}
-                  >
-                    {fillTemplate(dk.fillGasTest, { label: perm.label })}
-                  </button>
-                ))
-            : null}
+          {showGasTestTasks ? (
+            <div className="package-brief__gas-summary">
+              <p className="package-brief__docs-label muted xsmall">{t.gasTest.summaryTitle}</p>
+              <ul className="package-brief__gas-list">
+                {permissions
+                  .filter((p) => p.requiresGasTests)
+                  .map((perm) => (
+                    <li key={`gas-status-${perm.kind}`} className="package-brief__gas-row">
+                      <span className="package-brief__gas-label">{perm.label}</span>
+                      <span
+                        className={`badge ${
+                          perm.gasTestsFilled ? 'status-success' : 'status-warning'
+                        }`}
+                      >
+                        {perm.gasTestsFilled ? t.gasTest.filledBadge : t.ert.needsReading}
+                      </span>
+                      <button
+                        type="button"
+                        className={`package-brief__doc-link package-brief__doc-link--gas ${
+                          activeGasKind === perm.kind ? 'is-active' : ''
+                        }`}
+                        onClick={() => onGasTestTask?.(perm.kind)}
+                        title={fillTemplate(dk.fillGasTest, { label: perm.label })}
+                      >
+                        {fillTemplate(dk.fillGasTest, { label: perm.label })}
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

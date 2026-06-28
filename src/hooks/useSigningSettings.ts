@@ -1,35 +1,28 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSession } from '../context/SessionContext'
 import {
+  DEFAULT_SIGNING_SETTINGS,
   fetchSigningSettings,
   type SigningAppSettings,
 } from '../lib/signingSettings'
 
-const DEFAULT_SETTINGS: SigningAppSettings = {
-  verifyEgovFio: true,
-  updatedAtIso: '',
-}
-
 export function useSigningSettings() {
   const { authMode } = useSession()
-  const [settings, setSettings] = useState<SigningAppSettings>(DEFAULT_SETTINGS)
-  const [loading, setLoading] = useState(authMode === 'firebase')
+  const [settings, setSettings] = useState<SigningAppSettings>(DEFAULT_SIGNING_SETTINGS)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
-    if (authMode !== 'firebase') {
-      setSettings(DEFAULT_SETTINGS)
-      setLoading(false)
-      setError(null)
-      return
-    }
     setLoading(true)
     setError(null)
     try {
       const data = await fetchSigningSettings()
-      if (data) setSettings(data)
+      setSettings(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
+      if (authMode !== 'firebase') {
+        setSettings(DEFAULT_SIGNING_SETTINGS)
+      }
     } finally {
       setLoading(false)
     }

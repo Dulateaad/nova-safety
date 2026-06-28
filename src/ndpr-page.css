@@ -1,0 +1,48 @@
+.ndpr-workers-fieldset {
+  border: 2px dashed var(--border, #d4e3f2);
+  border-radius: var(--radius, 14px);
+  padding: 1rem 1rem 1.15rem;
+  margin: 1.25rem 0 0;
+}
+
+.ndpr-workers-fieldset > legend {
+  padding: 0 0.35rem;
+  font-weight: 600;
+  color: var(--text-h, #0b2147);
+}
+
+.ndpr-workers-fieldset__add {
+  margin-bottom: 0.85rem;
+}
+
+.ndpr-worker-row {
+  margin-bottom: 0.85rem;
+  padding: 0.85rem 1rem;
+  background: var(--bg-elevated, #f5f9fd);
+  border: 1px solid var(--border, #d4e3f2);
+  border-radius: var(--radius-sm, 10px);
+}
+
+.ndpr-worker-row:last-child {
+  margin-bottom: 0;
+}
+
+.ndpr-worker-row label {
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+.ndpr-worker-row label:last-of-type {
+  margin-bottom: 0;
+}
+
+.ndpr-worker-row select,
+.ndpr-worker-row input[type='date'] {
+  display: block;
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
+.ndpr-worker-row__remove {
+  margin-top: 0.85rem;
+}
